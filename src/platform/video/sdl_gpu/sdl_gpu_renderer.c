@@ -541,14 +541,24 @@ static SDL_Window* SDLGPURenderer_Init(const SDLRenderBackendInitInfo* init_info
         return NULL;
     }
 
-    SDL_ClaimWindowForGPUDevice(device, window);
+    if (!SDL_ClaimWindowForGPUDevice(device, window)) {
+        SDL_Log("Failed to claim GPU window: %s", SDL_GetError());
+        SDL_DestroyGPUDevice(device);
+        SDL_DestroyWindow(window);
+        return NULL;
+    }
 
     if (SDL_WindowSupportsGPUPresentMode(device, window, SDL_GPU_PRESENTMODE_MAILBOX)) {
         present_mode = SDL_GPU_PRESENTMODE_MAILBOX;
         SDL_Log("Using MAILBOX present mode");
-    } else {
+    } else if (SDL_WindowSupportsGPUPresentMode(device, window, SDL_GPU_PRESENTMODE_IMMEDIATE)) {
         present_mode = SDL_GPU_PRESENTMODE_IMMEDIATE;
         SDL_Log("Using IMMEDIATE present mode");
+    } else {
+        // VSYNC is always supported, including on iOS Metal devices that
+        // cannot disable display synchronization.
+        present_mode = SDL_GPU_PRESENTMODE_VSYNC;
+        SDL_Log("Using VSYNC present mode");
     }
 
     if (!SDL_SetGPUSwapchainParameters(device, window, SDL_GPU_SWAPCHAINCOMPOSITION_SDR, present_mode)) {

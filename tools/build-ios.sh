@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# Generate and build an iOS Xcode project with source-built static dependencies.
+set -euo pipefail
+
+usage() {
+    cat <<'USAGE'
+Usage: tools/build-ios.sh [simulator|device] [extra CMake configure arguments...]
+
+Requires macOS, full Xcode, and CMake 3.29 or newer.
+Builds Release by default. Device builds are unsigned unless a Team is supplied.
+
+Environment:
+  CONFIGURATION         Release (default), Debug, RelWithDebInfo, or MinSizeRel
+  IOS_DEVELOPMENT_TEAM  Apple Team ID; enables automatic signing for device builds
+  IOS_ARCH              arm64 for device; host architecture for simulator
+  IOS_BUILD_DIR         Override build/ios-device or build/ios-simulator
+  IOS_AFS_FILE          Optional local SF33RD.AFS to verify and bundle in the app
+  BUILD_JOBS            Number of parallel build jobs (default: 4)
+
+Unsigned device IPA: build/ios-device/3SX-unsigned.ipa
+USAGE
+}
+if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
+    usage
+    exit 0
+fi
+
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+SDK="${1:-simulator}"
+CONFIGURATION="${CONFIGURATION:-Release}"
+
+if [[ "$(uname -s)" != Darwin ]] || ! command -v xcodebuild >/dev/null 2>&1; then
+    echo "An iOS build requires macOS and the full Xcode application." >&2
+    exit 1
+fi
+if ! command -v cmake >/dev/null 2>&1; then
+    echo "Install CMake 3.29 or newer (for example, brew install cmake)." >&2
+    exit 1
+fi
+
+case "$SDK" in
+    simulator)
+        SYSROOT=iphonesimulator
+        ARCH="${IOS_ARCH:-$(uname -m)}"
+        ;;
+    device)
+        SYSROOT=iphoneos
+        ARCH="${IOS_ARCH:-arm64}"
+        ;;
+    *)
+        usage >&2
+        exit 1
+        ;;
+esac
+if [[ $# -gt 0 ]]; then shift; fi
+
+xcrun --sdk "$SYSROOT" --show-sdk-path >/dev/null
+BUILD_DIR="${IOS_BUILD_DIR:-$ROOT_DIR/build/ios-$SDK}"
+SIGN=OFF
+if [[ "$SDK" == device && -n "${IOS_DEVELOPMENT_TEAM:-}" ]]; then SIGN=ON; fi
+
+cmake -S "$ROOT_DIR" -B "$BUILD_DIR" -G Xcode \
+    -DCMAKE_SYSTEM_NAME=iOS \
+    -DCMAKE_OSX_SYSROOT="$SYSROOT" \
+    -DCMAKE_OSX_ARCHITECTURES="$ARCH" \
+    -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+    -DTHREESX_IOS_SIGN="$SIGN" \
+    -DTHREESX_IOS_DEVELOPMENT_TEAM="${IOS_DEVELOPMENT_TEAM:-}" \
+    -DTHREESX_IOS_AFS_FILE:FILEPATH="${IOS_AFS_FILE:-}" \
+    "$@"
+cmake --build "$BUILD_DIR" --config "$CONFIGURATION" --target 3sx --parallel "${BUILD_JOBS:-4}"
+
+echo "App: $BUILD_DIR/$CONFIGURATION-$SYSROOT/3SX.app"
+echo "Xcode project: $BUILD_DIR/3sx.xcodeproj"
+if [[ "$SDK" == device && "$SIGN" == OFF ]]; then
+    # A signer on Windows or another supported platform can consume this IPA.
+    # Package the built app, including game data only when explicitly supplied
+    # using IOS_AFS_FILE or THREESX_IOS_AFS_FILE during configuration.
+    PACKAGE_DIR="$(mktemp -d)"
+    trap 'rm -rf "$PACKAGE_DIR"' EXIT
+    mkdir -p "$PACKAGE_DIR/Payload"
+    ditto "$BUILD_DIR/$CONFIGURATION-$SYSROOT/3SX.app" "$PACKAGE_DIR/Payload/3SX.app"
+    ditto -c -k --sequesterRsrc --keepParent "$PACKAGE_DIR/Payload" "$BUILD_DIR/3SX-unsigned.ipa"
+    echo "Unsigned IPA: $BUILD_DIR/3SX-unsigned.ipa"
+    echo "Sign the IPA with your sideloading tool before installing it on a device."
+fi

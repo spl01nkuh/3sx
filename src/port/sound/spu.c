@@ -324,7 +324,7 @@ void SPU_SDL_CB(void* user, SDL_AudioStream* stream, int additional_amount, int 
     SDL_LockMutex(soundLock);
 
     while (samples_per_channel) {
-        u32 batch_count = min(samples_per_channel, 4096);
+        u32 batch_count = min(samples_per_channel, SDL_arraysize(outbuf) / 2);
         s16* p = outbuf;
         for (int i = 0; i < batch_count; i++) {
             SPU_Tick(p);
@@ -345,6 +345,25 @@ void SPU_SDL_CB(void* user, SDL_AudioStream* stream, int additional_amount, int 
 }
 
 static void nullcb() {}
+
+bool SPU_IsPaused(void) {
+    return stream == NULL || SDL_AudioStreamDevicePaused(stream);
+}
+
+void SPU_Pause(bool pause) {
+    if (stream == NULL) {
+        return;
+    }
+
+    if (pause) {
+        SDL_PauseAudioStreamDevice(stream);
+        // Drain any callback already in flight, including its game sound timer.
+        SDL_LockAudioStream(stream);
+        SDL_UnlockAudioStream(stream);
+    } else {
+        SDL_ResumeAudioStreamDevice(stream);
+    }
+}
 
 void SPU_Init(void (*cb)()) {
     SDL_AudioSpec spec;

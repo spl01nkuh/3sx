@@ -2,6 +2,10 @@
 
 #include <SDL3/SDL.h>
 
+#if CRS_PLATFORM_IOS
+#include "platform/app/ios/ios_resources.h"
+#endif
+
 #define ORG "CrowdedStreet"
 #define APP "3SX"
 
@@ -9,7 +13,12 @@ static const char* pref_path = NULL;
 
 const char* Paths_GetPrefPath() {
     if (pref_path == NULL) {
+#if CRS_PLATFORM_IOS
+        // Documents is visible in Files and Finder when file sharing is enabled.
+        pref_path = IOSResources_GetDocumentsPath();
+#else
         pref_path = SDL_GetPrefPath(ORG, APP);
+#endif
     }
 
     return pref_path;

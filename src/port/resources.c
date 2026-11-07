@@ -7,18 +7,22 @@
 #include "utils/sha256.h"
 #endif
 
-#if CRS_APP_DRIVER_SDL
+#if CRS_PLATFORM_IOS
+#include "platform/app/ios/ios_resources.h"
+#elif CRS_APP_DRIVER_SDL
 #include <cdio/iso9660.h>
 #endif
 
 #define EXPECTED_AFS_SHA "f9fa50f3a124ec9fa9465aa9c8546c2d867887eb39f711a070762a0324ba5604"
 
 static const char* afs_path = NULL;
+#if CRS_PLATFORM_IOS
+static const char* bundled_afs_path = NULL;
+#endif
 
 static bool file_exists(const char* path) {
-    SDL_PathInfo path_info;
-    SDL_GetPathInfo(path, &path_info);
-    return path_info.type == SDL_PATHTYPE_FILE;
+    SDL_PathInfo path_info = { 0 };
+    return SDL_GetPathInfo(path, &path_info) && path_info.type == SDL_PATHTYPE_FILE;
 }
 
 char* Resources_GetPath(const char* file_path) {
@@ -35,6 +39,11 @@ char* Resources_GetPath(const char* file_path) {
 }
 
 const char* Resources_GetAFSPath() {
+#if CRS_PLATFORM_IOS
+    if (bundled_afs_path != NULL) {
+        return bundled_afs_path;
+    }
+#endif
     if (afs_path == NULL) {
         afs_path = Resources_GetPath("SF33RD.AFS");
     }
@@ -43,22 +52,66 @@ const char* Resources_GetAFSPath() {
 }
 
 bool Resources_Check() {
-    const char* afs_path = Resources_GetAFSPath();
-    const bool afs_present = file_exists(afs_path);
+    if (Resources_ValidateAFS(Resources_GetAFSPath())) {
+        return true;
+    }
+
+#if CRS_PLATFORM_IOS
+    // Personal builds may carry the archive in the read-only app bundle.
+    // Read it in place so installation does not need a second large copy.
+    const char* base_path = SDL_GetBasePath();
+    char* candidate = NULL;
+    if (base_path != NULL && SDL_asprintf(&candidate, "%sresources/SF33RD.AFS", base_path) >= 0) {
+        if (Resources_ValidateAFS(candidate)) {
+            bundled_afs_path = candidate;
+            return true;
+        }
+        SDL_free(candidate);
+    }
+#endif
+
+    return false;
+}
+
+bool Resources_ValidateAFS(const char* path) {
+    const bool afs_present = file_exists(path);
 
     if (!afs_present) {
         return false;
     }
 
-#if CHECKSUM
-    sha256 sha;
-    sha256_init(&sha);
+    SDL_IOStream* io = SDL_IOFromFile(path, "rb");
+    if (io == NULL) {
+        return false;
+    }
 
+    Uint32 magic = 0;
+    Uint32 entry_count = 0;
+    const Sint64 file_size = SDL_GetIOSize(io);
+    if (!SDL_ReadU32BE(io, &magic) || magic != 0x41465300 || !SDL_ReadU32LE(io, &entry_count) ||
+        entry_count == 0 || file_size < 8 || entry_count > (Uint64)(file_size - 8) / 8) {
+        SDL_CloseIO(io);
+        return false;
+    }
+
+#if CHECKSUM
     const size_t chunk_size = 10 * 1024;
     void* buf = SDL_malloc(chunk_size);
-    SDL_IOStream* io = SDL_IOFromFile(afs_path, "rb");
+    if (buf == NULL || SDL_SeekIO(io, 0, SDL_IO_SEEK_SET) < 0) {
+        SDL_free(buf);
+        SDL_CloseIO(io);
+        return false;
+    }
+
+    sha256 sha;
+    if (!sha256_init(&sha)) {
+        SDL_free(buf);
+        SDL_CloseIO(io);
+        return false;
+    }
     size_t bytes_read = 0;
 
+    bool hash_ok = true;
     while (true) {
         bytes_read = SDL_ReadIO(io, buf, chunk_size);
 
@@ -66,14 +119,21 @@ bool Resources_Check() {
             break;
         }
 
-        sha256_append(&sha, buf, bytes_read);
+        if (!sha256_append(&sha, buf, bytes_read)) {
+            hash_ok = false;
+            break;
+        }
     }
 
+    const bool read_ok = SDL_GetIOStatus(io) == SDL_IO_STATUS_EOF;
     SDL_free(buf);
     SDL_CloseIO(io);
 
     char hex[SHA256_HEX_SIZE];
-    sha256_finalize_hex(&sha, hex);
+    const bool finalized = sha256_finalize_hex(&sha, hex);
+    if (!read_ok || !hash_ok || !finalized) {
+        return false;
+    }
 
     if (SDL_strncmp(hex, EXPECTED_AFS_SHA, sizeof(hex)) == 0) {
         return true;
@@ -81,11 +141,18 @@ bool Resources_Check() {
         return false;
     }
 #else
+    SDL_CloseIO(io);
     return true;
 #endif
 }
 
-#if CRS_APP_DRIVER_SDL
+#if CRS_PLATFORM_IOS
+
+bool Resources_RunResourceCopyingFlow() {
+    return IOSResources_RunImportFlow();
+}
+
+#elif CRS_APP_DRIVER_SDL
 
 #define ERROR_LEN_MAX 512
 

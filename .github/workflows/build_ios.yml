@@ -1,0 +1,77 @@
+name: Build (iOS)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["ios-port"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: iOS ${{ matrix.sdk }} (unsigned)
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: [device, simulator]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Check build tools
+        run: |
+          xcodebuild -version
+          cmake --version
+
+      - name: Build native iOS app
+        run: |
+          set -o pipefail
+          bash tools/build-ios.sh "${{ matrix.sdk }}" 2>&1 | tee build-ios.log
+        env:
+          CONFIGURATION: Release
+          BUILD_JOBS: 4
+
+      - name: Package simulator app
+        if: matrix.sdk == 'simulator'
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            build/ios-simulator/Release-iphonesimulator/3SX.app \
+            build/ios-simulator/3SX-simulator.zip
+
+      - name: Test portable touch input
+        run: |
+          cc -std=c2x -DCRS_PLATFORM_IOS=1 -Isrc \
+            -Ibuild/ios-${{ matrix.sdk }}/_deps/threesx_sdl-src/include \
+            tools/tests/test-ios-touch.c src/platform/input/ios/ios_touch_state.c \
+            -o /tmp/test-ios-touch
+          /tmp/test-ios-touch
+
+      - name: Test local AFS packaging helper
+        run: python3 -m unittest discover -s tools/tests -p 'test_bundle_ios_afs.py' -v
+
+      - name: Upload unsigned device IPA
+        if: matrix.sdk == 'device'
+        uses: actions/upload-artifact@v4
+        with:
+          name: 3SX-iOS-device-unsigned
+          path: build/ios-device/3SX-unsigned.ipa
+          if-no-files-found: error
+
+      - name: Upload simulator app
+        if: matrix.sdk == 'simulator'
+        uses: actions/upload-artifact@v4
+        with:
+          name: 3SX-iOS-simulator
+          path: build/ios-simulator/3SX-simulator.zip
+          if-no-files-found: error
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-${{ matrix.sdk }}-build-log
+          path: build-ios.log

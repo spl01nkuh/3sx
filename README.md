@@ -48,6 +48,8 @@ To track progress towards version 1.0 check our [1.0 milestone](https://github.c
 
 All documentation (including the build guide) can be found in [docs](docs) folder.
 
+An experimental iPhone and iPad port with touch controls is documented in the [iOS prototype guide](docs/ios.md). A hosted build supports users without a Mac; signing and Apple-device validation are still required.
+
 ## Community
 
 Join `Crowded Street` server on Discord to discuss the project, report bugs or share your ideas!

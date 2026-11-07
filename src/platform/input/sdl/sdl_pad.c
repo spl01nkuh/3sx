@@ -4,6 +4,11 @@
 #include "core/input.h"
 #include "port/config/keymap.h"
 
+#if CRS_PLATFORM_IOS
+#include "platform/input/ios/ios_touch.h"
+#include "platform/input/ios/ios_touch_state.h"
+#endif
+
 #include <SDL3/SDL.h>
 
 #define INPUT_SOURCES_MAX 2
@@ -99,6 +104,12 @@ static void handle_gamepad_added_event(const SDL_GamepadDeviceEvent* event) {
     }
 
     SDL_Gamepad* gamepad = SDL_OpenGamepad(event->which);
+
+    if (gamepad == NULL) {
+        SDL_Log("Couldn't open gamepad: %s", SDL_GetError());
+        setup_keyboard();
+        return;
+    }
 
     for (int i = 0; i < INPUT_SOURCES_MAX; i++) {
         SDLPad_InputSource* input_source = &input_sources[i];
@@ -237,6 +248,16 @@ void SDLPad_HandleGamepadDeviceEvent(const SDL_GamepadDeviceEvent* event) {
 }
 
 bool SDLPad_IsGamepadConnected(int id) {
+    if (id < 0 || id >= INPUT_SOURCES_MAX) {
+        return false;
+    }
+
+#if CRS_PLATFORM_IOS
+    // Touch controls provide player 1 even without an external gamepad.
+    if (id == 0) {
+        return true;
+    }
+#endif
     return input_sources[id].type != SDLPAD_INPUT_NONE;
 }
 
@@ -253,18 +274,34 @@ void SDLPad_GetButtonState(int id, Input_ButtonState* state) {
 
     if (id == keyboard_index) {
         get_keyboard_state(state);
-    } else {
+    } else if (input_sources[id].type == SDLPAD_INPUT_GAMEPAD) {
         get_gamepad_state(id, state);
     }
+
+#if CRS_PLATFORM_IOS
+    if (id == 0) {
+        Input_ButtonState touch;
+        IOSTouch_GetButtonState(&touch);
+        IOSTouchState_Merge(state, &touch);
+    }
+#endif
 
     cleanup_state(state);
 }
 
 Input_PadType SDLPad_GetPadType(int id) {
+    if (id < 0 || id >= INPUT_SOURCES_MAX) {
+        return INPUT_PAD_TYPE_UNKNOWN;
+    }
     const SDLPad_InputSource* input_source = &input_sources[id];
 
     switch (input_source->type) {
     case SDLPAD_INPUT_NONE:
+#if CRS_PLATFORM_IOS
+        if (id == 0) {
+            return INPUT_PAD_TYPE_PLAYSTATION;
+        }
+#endif
         return INPUT_PAD_TYPE_UNKNOWN;
 
     case SDLPAD_INPUT_KEYBOARD:
@@ -290,6 +327,9 @@ Input_PadType SDLPad_GetPadType(int id) {
 }
 
 void SDLPad_RumblePad(int id, bool low_freq_enabled, Uint8 high_freq_rumble) {
+    if (id < 0 || id >= INPUT_SOURCES_MAX) {
+        return;
+    }
     const SDLPad_InputSource* input_source = &input_sources[id];
 
     if (input_source->type != SDLPAD_INPUT_GAMEPAD) {

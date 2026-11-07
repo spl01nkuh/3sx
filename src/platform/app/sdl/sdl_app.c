@@ -11,6 +11,11 @@
 #include "port/sound/adx.h"
 #include "sf33rd/AcrSDK/ps2/foundaps2.h"
 
+#if CRS_PLATFORM_IOS
+#include "platform/input/ios/ios_touch.h"
+#include "port/sound/spu.h"
+#endif
+
 #if CRS_INPUT_DRIVER_SDL
 #include "platform/input/sdl/sdl_pad.h"
 #endif
@@ -76,6 +81,12 @@ static Uint64 frame_deadline = 0;
 static FrameMetrics frame_metrics = { 0 };
 static Uint64 last_frame_end_time = 0;
 
+#if CRS_PLATFORM_IOS
+static bool app_suspended;
+static bool adx_was_paused;
+static bool spu_was_paused;
+#endif
+
 static Uint64 last_mouse_motion_time = 0;
 static const int mouse_hide_delay_ms = 2000; // 2 seconds
 
@@ -97,6 +108,10 @@ static void init_scalemode() {
 
 static bool init_window() {
     SDL_WindowFlags window_flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+
+#if CRS_PLATFORM_IOS
+    window_flags |= SDL_WINDOW_FULLSCREEN;
+#endif
 
     if (Config_GetBool(CFG_KEY_FULLSCREEN)) {
         window_flags |= SDL_WINDOW_FULLSCREEN;
@@ -127,6 +142,11 @@ static bool pre_init() {
     SDL_SetHint(SDL_HINT_VIDEO_WAYLAND_PREFER_LIBDECOR, "1");
     SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1");
 
+#if CRS_PLATFORM_IOS
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+    SDL_SetHint(SDL_HINT_IOS_HIDE_HOME_INDICATOR, "1");
+#endif
+
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("Couldn't initialize SDL: %s", SDL_GetError());
         return false;
@@ -149,6 +169,8 @@ static void init_windows_console() {
 #endif
 
 static bool full_init() {
+    bool renderer_initialized = false;
+    bool resource_attempted = false;
     Config_Init();
     Keymap_Init();
     init_scalemode();
@@ -161,13 +183,21 @@ static bool full_init() {
 
     if (!SDL_Init(SDL_INIT_GAMEPAD)) {
         SDL_Log("Couldn't initialize gamepad subsystem: %s", SDL_GetError());
-        return false;
+        goto failed;
     }
 
     if (!init_window()) {
         SDL_Log("Couldn't initialize SDL window: %s", SDL_GetError());
-        return false;
+        goto failed;
     }
+    renderer_initialized = true;
+
+#if CRS_PLATFORM_IOS
+    if (!IOSTouch_Init(window)) {
+        SDL_Log("Couldn't initialize touch controls: %s", SDL_GetError());
+        goto failed;
+    }
+#endif
 
 // Initialize pads
 #if CRS_INPUT_DRIVER_SDL
@@ -178,23 +208,44 @@ static bool full_init() {
     init_windows_console();
 #endif
 
-    Resource_Init(Resources_GetAFSPath(), 256 * 1024);
+    resource_attempted = true;
+    if (!Resource_Init(Resources_GetAFSPath(), 256 * 1024)) {
+        SDL_Log("Couldn't open game data: %s", Resources_GetAFSPath());
+        goto failed;
+    }
 
 #if STATCHECK
     if (!TestRunner_Init(get_args()->statcheck.ram_archive_path)) {
         SDL_Log("Failed to initialize test runner");
-        return false;
+        goto failed;
     }
 #endif
 
     Main_Init();
     return true;
+
+failed:
+    if (resource_attempted) {
+        Resource_Finish();
+    }
+#if CRS_PLATFORM_IOS
+    IOSTouch_Quit();
+#endif
+    if (renderer_initialized) {
+        SDLGenericRenderer_Quit();
+        window = NULL;
+    }
+    Config_Destroy();
+    return false;
 }
 
 static void cleanup() {
     Main_Finish();
     Resource_Finish();
     Config_Destroy();
+#if CRS_PLATFORM_IOS
+    IOSTouch_Quit();
+#endif
     SDLGenericRenderer_Quit();
 }
 
@@ -375,6 +426,11 @@ static void end_frame() {
     // Handle cursor hiding
     hide_cursor_if_needed();
 
+#if CRS_PLATFORM_IOS
+    // UIKit drives callbacks with CADisplayLink. Sleeping here can miss the next
+    // display refresh and blocks touch handling on the main thread.
+    update_metrics(0);
+#else
     // Do frame pacing
     Uint64 now = SDL_GetTicksNS();
 
@@ -399,6 +455,7 @@ static void end_frame() {
 
     // Measure
     update_metrics(sleep_time);
+#endif
 }
 
 #if NETPLAY_ENABLED
@@ -452,8 +509,16 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 SDL_AppResult SDL_AppIterate(void* appstate) {
     (void)appstate;
 
+#if CRS_PLATFORM_IOS
+    if (app_suspended) {
+        return SDL_APP_CONTINUE;
+    }
+#endif
+
     if (phase == APP_PHASE_COPYING_RESOURCES) {
+#if !CRS_PLATFORM_IOS
         SDL_Delay(16);
+#endif
 
         if (Resources_RunResourceCopyingFlow()) {
             if (!full_init()) {
@@ -467,6 +532,17 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     }
 
     if (phase == APP_PHASE_INITIALIZED) {
+#if CRS_PLATFORM_IOS
+        // Keep simulation at the arcade rate on both 60 Hz and ProMotion screens.
+        const Uint64 now = SDL_GetTicksNS();
+        if (now < frame_deadline) {
+            return SDL_APP_CONTINUE;
+        }
+        if (frame_deadline == 0 || now > frame_deadline + target_frame_time_ns) {
+            frame_deadline = now;
+        }
+        frame_deadline += target_frame_time_ns;
+#endif
         begin_frame();
         Main_StepFrame();
         end_frame();
@@ -478,6 +554,32 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 
 SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
     (void)appstate;
+
+#if CRS_PLATFORM_IOS
+    switch (event->type) {
+    case SDL_EVENT_WILL_ENTER_BACKGROUND:
+        if (!app_suspended && phase == APP_PHASE_INITIALIZED) {
+            adx_was_paused = ADX_IsPaused();
+            spu_was_paused = SPU_IsPaused();
+            ADX_Pause(true);
+            SPU_Pause(true);
+        }
+        app_suspended = true;
+        IOSTouch_Reset();
+        return SDL_APP_CONTINUE;
+
+    case SDL_EVENT_DID_ENTER_FOREGROUND:
+        if (app_suspended && phase == APP_PHASE_INITIALIZED) {
+            ADX_Pause(adx_was_paused);
+            SPU_Pause(spu_was_paused);
+        }
+        app_suspended = false;
+        IOSTouch_Reset();
+        frame_deadline = 0;
+        last_frame_end_time = SDL_GetTicksNS();
+        return SDL_APP_CONTINUE;
+    }
+#endif
 
     if (event->type == SDL_EVENT_QUIT) {
         return SDL_APP_SUCCESS;

@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.24)
 project(3sx LANGUAGES C CXX)
 
+# iOS uses source-built static dependencies and an app bundle, rather than the
+# desktop dependency layout and OpenGL fallback below.
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    include(${PROJECT_SOURCE_DIR}/cmake/ios.cmake)
+    return()
+endif()
+
 include(${PROJECT_SOURCE_DIR}/cmake/imgui_sources.cmake)
 
 set(THREESX_CONFIGURATIONS Debug Release RelWithDebInfo MinSizeRel)

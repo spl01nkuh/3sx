@@ -40,6 +40,8 @@ You should be able to build the project with just Xcode Command Line Tools.
 
 ## Building
 
+For the experimental iPhone/iPad target, follow the [iOS build and installation guide](ios.md), including its hosted build option for users without a Mac. Its build uses the full Xcode iOS SDK and a separate dependency setup from the desktop commands below.
+
 1. Build dependencies
 
     ```bash

@@ -9,6 +9,8 @@ char* Resources_GetPath(const char* file_path);
 
 const char* Resources_GetAFSPath();
 bool Resources_Check();
+/// Validate an archive before installing it in the resources directory.
+bool Resources_ValidateAFS(const char* path);
 
 // FIXME: Extract resource copying flow from here
 #if CRS_APP_DRIVER_SDL

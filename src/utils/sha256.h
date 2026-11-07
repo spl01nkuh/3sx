@@ -4,13 +4,21 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#if CRS_PLATFORM_IOS
+#include <CommonCrypto/CommonDigest.h>
+#else
 #include <psa/crypto.h>
+#endif
 
 #define SHA256_HEX_SIZE (64 + 1)
 #define SHA256_BYTES_SIZE 32
 
 typedef struct sha256 {
+#if CRS_PLATFORM_IOS
+    CC_SHA256_CTX operation;
+#else
     psa_hash_operation_t operation;
+#endif
     bool active;
     bool finished;
 } sha256;
