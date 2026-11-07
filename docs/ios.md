@@ -1,6 +1,6 @@
 # iOS prototype
 
-This branch adds an experimental iPhone and iPad target using SDL3's Metal renderer, with on-screen touch controls for offline play. It is source for an iOS port, not a verified device release: an Apple-toolchain build, signing, and gameplay tests on Apple hardware are still required.
+This branch adds an experimental iPhone and iPad target using SDL3's Metal renderer, with on-screen touch controls for offline play. Release builds for iPhone and simulator pass on a hosted Mac. Signing, installation, and gameplay testing on a physical device are still required.
 
 The build can run on a hosted macOS GitHub Actions runner, so you do not need to own a Mac to compile it. Installing the resulting app on a physical iPhone or iPad is a separate signing step.
 
@@ -46,7 +46,9 @@ If you downloaded this port from the `ios-port` branch of a fork, pushes to that
 3. Select **Build (iOS)**, choose **Run workflow**, and select the branch containing the port.
 4. Open the completed run. Under **Artifacts**, download **3SX-iOS-device-unsigned** and extract its ZIP to get `3SX-unsigned.ipa`.
 
-The workflow uses a hosted macOS runner and builds the dependencies automatically. It also creates a **3SX-iOS-simulator** artifact for Mac-based simulator testing; use the device IPA for sideloading onto your phone or tablet. If the build fails, the run's logs and `ios-device-build-log` artifact contain the compiler error to investigate. The workflow has been added, but a successful hosted build has not yet been verified.
+The workflow uses a hosted macOS runner and builds the dependencies automatically. It also creates a **3SX-iOS-simulator** artifact for Mac-based simulator testing; use the device IPA for sideloading onto your phone or tablet. If the build fails, the run's logs and `ios-device-build-log` artifact contain the compiler error to investigate. Both Release jobs passed in [this verified build](https://github.com/spl01nkuh/3sx/actions/runs/42334103610).
+
+For that build, [download the device artifact ZIP](https://github.com/spl01nkuh/3sx/actions/runs/42334103610/artifacts/13559336387) while signed in to GitHub. Extract it to obtain `3SX-unsigned.ipa`. The IPA was checked for ZIP integrity, an arm64 iPhone executable, iOS 15.0 minimum, and the packaged Metal shaders and assets. It contains no AFS archive; use the local helper below to add yours before signing, or import it after installation.
 
 If starting with a new repository, create an empty one on GitHub without adding a README. Install Git on your computer, open a terminal in the extracted source folder, and run these commands, replacing the repository URL with your own:
 
@@ -136,8 +138,9 @@ Open the generated project, select the `3sx` scheme and your connected device, t
 - Metal rendering, native AFS import, sandbox paths, on-screen controls, and background/foreground handling are included in the prototype.
 - Netplay, replay statcheck, and the desktop debug UI are excluded from the initial iOS target.
 - An in-app controller configuration screen is not implemented.
-- This work was prepared in a Linux environment without Xcode or an iOS device. No successful iOS build, signed installation, frame-rate measurement, audio test, or full gameplay test is claimed.
+- Hosted Xcode Release builds for iPhone and simulator pass, including UIKit and CommonCrypto compilation and the portable touch/IPA helper tests. The verified code commit is `b6da0bb292c897fffae647bacff1ffd81ba119b3`.
+- Signed installation, frame-rate measurement, audio output, and full gameplay on a physical device remain untested.
 
-Host checks passed for C syntax in Release and Debug, portable touch direction/chord/controller merging, malformed AFS headers, build-script syntax, plist parsing, and CMake configuration logic. C syntax checks used real SDL3/minizip headers with `CHECKSUM=0`; they do not compile UIKit or CommonCrypto and do not establish a successful iOS build. The source is based on upstream commit `6187364`.
+Additional Linux host checks passed with GCC and Clang for C syntax in Release and Debug, portable touch direction/chord/controller merging, malformed AFS headers, bundle resource selection, build-script syntax, plist parsing, and CMake configuration logic. Host C checks use `CHECKSUM=0`; the hosted Xcode builds validate the Apple-specific compilation. The source is based on upstream commit `6187364`.
 
 Before treating the port as playable, test archive import, menus, a complete match with simultaneous touch inputs, audio interruptions, landscape rotation, and background/resume on a physical device. Simulator testing can help with startup and import, but cannot establish device performance or controller compatibility.
