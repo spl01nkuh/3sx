@@ -48,7 +48,7 @@ If you downloaded this port from the `ios-port` branch of a fork, pushes to that
 
 The workflow uses a hosted macOS runner and builds the dependencies automatically. It also creates a **3SX-iOS-simulator** artifact for Mac-based simulator testing; use the device IPA for sideloading onto your phone or tablet. If the build fails, the run's logs and `ios-device-build-log` artifact contain the compiler error to investigate. Both Release jobs passed in [this verified build](https://github.com/spl01nkuh/3sx/actions/runs/42334103610).
 
-For that build, [download the device artifact ZIP](https://github.com/spl01nkuh/3sx/actions/runs/42334103610/artifacts/13559336387) while signed in to GitHub. Extract it to obtain `3SX-unsigned.ipa`. The IPA was checked for ZIP integrity, an arm64 iPhone executable, iOS 15.0 minimum, and the packaged Metal shaders and assets. It contains no AFS archive; use the local helper below to add yours before signing, or import it after installation.
+For the corrected 0.1.1 build, [download the device artifact ZIP](https://github.com/spl01nkuh/3sx/actions/runs/42338032772/artifacts/13560114086) while signed in to GitHub. Extract it to obtain `3SX-unsigned.ipa`. The IPA was checked for ZIP integrity, an arm64 iPhone executable, iOS 15.0 minimum, and the packaged Metal shaders and assets. It contains no AFS archive; use the local helper below to add yours before signing, or import it after installation.
 
 If starting with a new repository, create an empty one on GitHub without adding a README. Install Git on your computer, open a terminal in the extracted source folder, and run these commands, replacing the repository URL with your own:
 
@@ -146,3 +146,5 @@ Additional Linux host checks passed with GCC and Clang for C syntax in Release a
 Before treating the port as playable, test archive import, menus, a complete match with simultaneous touch inputs, audio interruptions, landscape rotation, and background/resume on a physical device. Simulator testing can help with startup and import, but cannot establish device performance or controller compatibility.
 
 Bundled data in version 0.1.1 uses `game-data`, avoiding Apple's reserved bundle Resources directory. Re-download both the updated IPA and helper before recreating a preloaded IPA from an older build.
+
+The corrected iPhone build passed the Apple Foundation bundle-recognition check with preloaded data present in [run 42338032772](https://github.com/spl01nkuh/3sx/actions/runs/42338032772). Physical-device installation still requires confirmation.
