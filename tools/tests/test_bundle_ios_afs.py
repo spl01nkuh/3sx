@@ -49,8 +49,8 @@ class BundleIPATests(unittest.TestCase):
             if duplicate_afs:
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore", UserWarning)
-                    archive.writestr("Payload/3SX.app/resources/SF33RD.AFS", b"old AFS")
-                    archive.writestr("Payload/3SX.app/resources/SF33RD.AFS", b"duplicate old AFS")
+                    archive.writestr("Payload/3SX.app/game-data/SF33RD.AFS", b"old AFS")
+                    archive.writestr("Payload/3SX.app/game-data/SF33RD.AFS", b"duplicate old AFS")
             if second_app:
                 archive.writestr("Payload/Other.app/Info.plist", b"other app")
             if nested_plugin:
@@ -64,7 +64,7 @@ class BundleIPATests(unittest.TestCase):
         with mock.patch.object(bundler, "CHUNK_SIZE", 7):
             self.assertEqual(bundler.bundle_ipa(self.ipa, self.afs, self.output), self.output)
         with zipfile.ZipFile(self.ipa) as original, zipfile.ZipFile(self.output) as result:
-            self.assertEqual(result.read("Payload/3SX.app/resources/SF33RD.AFS"), self.data)
+            self.assertEqual(result.read("Payload/3SX.app/game-data/SF33RD.AFS"), self.data)
             self.assertEqual(result.comment, original.comment)
             for name in original.namelist():
                 self.assertEqual(result.read(name), original.read(name))
@@ -78,7 +78,7 @@ class BundleIPATests(unittest.TestCase):
         self.make_ipa(duplicate_afs=True)
         bundler.bundle_ipa(self.ipa, self.afs, self.output)
         with zipfile.ZipFile(self.output) as result:
-            target = "Payload/3SX.app/resources/SF33RD.AFS"
+            target = "Payload/3SX.app/game-data/SF33RD.AFS"
             self.assertEqual(result.namelist().count(target), 1)
             self.assertEqual(result.read(target), self.data)
 
@@ -86,6 +86,24 @@ class BundleIPATests(unittest.TestCase):
         with mock.patch.object(bundler, "EXPECTED_AFS_SHA256", PRODUCTION_DIGEST):
             with self.assertRaisesRegex(bundler.BundleError, "checksum"):
                 bundler.bundle_ipa(self.ipa, self.afs, self.output)
+        self.assert_no_partial_output()
+
+    def test_legacy_resources_directory_is_removed(self):
+        with zipfile.ZipFile(self.ipa, "a") as archive:
+            archive.writestr("Payload/3SX.app/resources/", b"")
+            archive.writestr("Payload/3SX.app/resources/SF33RD.AFS", b"old archive")
+        bundler.bundle_ipa(self.ipa, self.afs, self.output)
+        with zipfile.ZipFile(self.output) as result:
+            self.assertEqual(result.read("Payload/3SX.app/game-data/SF33RD.AFS"), self.data)
+            self.assertFalse(any(name.lower().startswith("payload/3sx.app/resources/") for name in result.namelist()))
+            with zipfile.ZipFile(self.ipa) as original:
+                self.assertEqual(result.read("Payload/3SX.app/Info.plist"), original.read("Payload/3SX.app/Info.plist"))
+
+    def test_reserved_resources_with_other_data_is_rejected(self):
+        with zipfile.ZipFile(self.ipa, "a") as archive:
+            archive.writestr("Payload/3SX.app/Resources/other.dat", b"keep me")
+        with self.assertRaisesRegex(bundler.BundleError, "reserved Resources"):
+            bundler.bundle_ipa(self.ipa, self.afs, self.output)
         self.assert_no_partial_output()
 
     def test_bad_header_and_truncated_table_are_rejected(self):
@@ -120,7 +138,7 @@ class BundleIPATests(unittest.TestCase):
         self.make_ipa(nested_plugin=True)
         bundler.bundle_ipa(self.ipa, self.afs, self.output)
         with zipfile.ZipFile(self.output) as result:
-            self.assertIn("Payload/3SX.app/resources/SF33RD.AFS", result.namelist())
+            self.assertIn("Payload/3SX.app/game-data/SF33RD.AFS", result.namelist())
             self.assertIn("Payload/3SX.app/PlugIns/Nested.app/Info.plist", result.namelist())
 
     def test_failed_copy_cleans_temporary_output_and_preserves_existing_destination(self):

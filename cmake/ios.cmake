@@ -95,16 +95,20 @@ list(FILTER IOS_GAME_SRC EXCLUDE REGEX "/platform/video/opengl/")
 file(GLOB_RECURSE IOS_OBJC_SRC CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/*.m")
 add_executable(3sx MACOSX_BUNDLE ${IOS_GAME_SRC} ${IOS_OBJC_SRC})
 if(THREESX_IOS_AFS_FILE)
-    set_source_files_properties("${IOS_BUNDLED_AFS}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/resources")
+    set_source_files_properties("${IOS_BUNDLED_AFS}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/game-data")
     target_sources(3sx PRIVATE "${IOS_BUNDLED_AFS}")
 else()
     # Xcode can retain copied resources when reusing a build directory. Remove
     # a previously bundled archive when the option has been cleared.
     add_custom_command(TARGET 3sx PRE_BUILD
-        COMMAND "${CMAKE_COMMAND}" -E rm -f "$<TARGET_BUNDLE_DIR:3sx>/resources/SF33RD.AFS"
+        COMMAND "${CMAKE_COMMAND}" -E rm -f "$<TARGET_BUNDLE_DIR:3sx>/game-data/SF33RD.AFS"
         VERBATIM
     )
 endif()
+add_custom_command(TARGET 3sx PRE_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E rm -rf "$<TARGET_BUNDLE_DIR:3sx>/resources"
+    VERBATIM
+)
 target_include_directories(3sx PRIVATE
     "${PROJECT_SOURCE_DIR}/src"
     "${PROJECT_SOURCE_DIR}/src/sdk"
@@ -145,8 +149,8 @@ set_target_properties(3sx PROPERTIES
     OUTPUT_NAME "3SX"
     MACOSX_BUNDLE_BUNDLE_NAME "3SX"
     MACOSX_BUNDLE_GUI_IDENTIFIER "${THREESX_IOS_BUNDLE_IDENTIFIER}"
-    MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1.0"
-    MACOSX_BUNDLE_BUNDLE_VERSION "1"
+    MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1.1"
+    MACOSX_BUNDLE_BUNDLE_VERSION "2"
     MACOSX_BUNDLE_INFO_PLIST "${PROJECT_SOURCE_DIR}/cmake/iOS-Info.plist"
     XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${THREESX_IOS_BUNDLE_IDENTIFIER}"
     XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"

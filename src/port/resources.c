@@ -61,7 +61,7 @@ bool Resources_Check() {
     // Read it in place so installation does not need a second large copy.
     const char* base_path = SDL_GetBasePath();
     char* candidate = NULL;
-    if (base_path != NULL && SDL_asprintf(&candidate, "%sresources/SF33RD.AFS", base_path) >= 0) {
+    if (base_path != NULL && SDL_asprintf(&candidate, "%sgame-data/SF33RD.AFS", base_path) >= 0) {
         if (Resources_ValidateAFS(candidate)) {
             bundled_afs_path = candidate;
             return true;

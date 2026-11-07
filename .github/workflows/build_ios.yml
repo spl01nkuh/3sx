@@ -78,6 +78,9 @@ jobs:
       - name: Test local AFS packaging helper
         run: python3 -m unittest discover -s tools/tests -p 'test_bundle_ios_afs.py' -v
 
+      - name: Verify Apple bundle recognition with preloaded data
+        run: swift tools/tests/test-ios-bundle.swift build/ios-${{ matrix.sdk }}/Release-${{ matrix.sdk == 'device' && 'iphoneos' || 'iphonesimulator' }}/3SX.app
+
       - name: Upload unsigned device IPA
         if: matrix.sdk == 'device'
         uses: actions/upload-artifact@v4

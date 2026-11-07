@@ -121,7 +121,7 @@ def bundle_ipa(input_ipa: Path, afs_path: Path, output_ipa: Path, *, force: bool
     try:
         with zipfile.ZipFile(input_ipa, "r") as source:
             app = _main_app(source)
-            target = app + "/resources/SF33RD.AFS"
+            target = app + "/game-data/SF33RD.AFS"
             with tempfile.NamedTemporaryFile(
                 prefix="." + output_ipa.name + ".", suffix=".tmp", dir=output_ipa.parent, delete=False
             ) as pending:
@@ -129,6 +129,14 @@ def bundle_ipa(input_ipa: Path, afs_path: Path, output_ipa: Path, *, force: bool
             with zipfile.ZipFile(temporary, "w", allowZip64=True) as destination:
                 destination.comment = source.comment
                 for entry in source.infolist():
+                    relative = entry.filename.removeprefix(app + "/")
+                    parts = relative.split("/", 1)
+                    if entry.filename.startswith(app + "/") and parts[0].casefold() == "resources":
+                        # A root Resources directory changes Apple's bundle-layout
+                        # detection. Remove the legacy AFS and empty directory.
+                        if len(parts) == 1 or parts[1] in ("", "SF33RD.AFS"):
+                            continue
+                        raise BundleError("The IPA contains other files in a reserved Resources folder. Rebuild it first.")
                     # Remove every old target entry, including duplicate ZIP entries.
                     if entry.filename == target:
                         continue

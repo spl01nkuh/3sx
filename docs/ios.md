@@ -74,7 +74,7 @@ py -3 tools/bundle-ios-afs.py C:\path\to\3SX-unsigned.ipa C:\path\to\SF33RD.AFS 
 
 On macOS or Linux, use `python3` in place of `py -3`. Put quotation marks around paths containing spaces.
 
-The helper checks the AFS checksum and embeds it as `Payload/3SX.app/resources/SF33RD.AFS`. It processes the large file in chunks and leaves the original IPA unchanged. It does not upload your archive. Use a new output filename; existing output files are not overwritten unless you pass `--force`.
+The helper checks the AFS checksum and embeds it as `Payload/3SX.app/game-data/SF33RD.AFS`. It processes the large file in chunks and leaves the original IPA unchanged. It does not upload your archive. Use a new output filename; existing output files are not overwritten unless you pass `--force`.
 
 4. Give **3SX-with-data.ipa** to Sideloadly or your AltStore-style tool. That tool signs the modified IPA during installation. Add the AFS before this signing step, since changing app contents invalidates an existing signature.
 
@@ -114,7 +114,7 @@ To include an AFS during a local Mac build instead of using the IPA helper:
 IOS_AFS_FILE="/path/to/SF33RD.AFS" bash tools/build-ios.sh device
 ```
 
-The build validates the archive and bundles it under `resources/SF33RD.AFS`. `IOS_AFS_FILE` is optional; leaving it unset produces the usual app with an import screen. The equivalent CMake option is `THREESX_IOS_AFS_FILE`.
+The build validates the archive and bundles it under `game-data/SF33RD.AFS`. `IOS_AFS_FILE` is optional; leaving it unset produces the usual app with an import screen. The equivalent CMake option is `THREESX_IOS_AFS_FILE`.
 
 For a simulator build instead:
 
@@ -144,3 +144,5 @@ Open the generated project, select the `3sx` scheme and your connected device, t
 Additional Linux host checks passed with GCC and Clang for C syntax in Release and Debug, portable touch direction/chord/controller merging, malformed AFS headers, bundle resource selection, build-script syntax, plist parsing, and CMake configuration logic. Host C checks use `CHECKSUM=0`; the hosted Xcode builds validate the Apple-specific compilation. The source is based on upstream commit `6187364`.
 
 Before treating the port as playable, test archive import, menus, a complete match with simultaneous touch inputs, audio interruptions, landscape rotation, and background/resume on a physical device. Simulator testing can help with startup and import, but cannot establish device performance or controller compatibility.
+
+Bundled data in version 0.1.1 uses `game-data`, avoiding Apple's reserved bundle Resources directory. Re-download both the updated IPA and helper before recreating a preloaded IPA from an older build.
