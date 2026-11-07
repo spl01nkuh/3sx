@@ -3,6 +3,9 @@
 #include "platform/video/sdl_gpu/sdl_gpu_renderer.h"
 #include "common.h"
 #include "port/config/config.h"
+#if CRS_PLATFORM_IOS
+#include "platform/app/ios/ios_options.h"
+#endif
 #include "port/utils.h"
 #include "sf33rd/AcrSDK/ps2/flps2etc.h"
 #include "sf33rd/AcrSDK/ps2/foundaps2.h"
@@ -99,6 +102,14 @@ static SDL_GPUGraphicsPipeline* palette_4_pipeline = NULL;
 static SDL_GPUGraphicsPipeline* palette_8_pipeline = NULL;
 static SDL_GPUGraphicsPipeline* screen_pipeline = NULL;
 static SDL_GPUGraphicsPipeline* scanline_pipeline = NULL;
+#if CRS_PLATFORM_IOS
+static SDL_GPUGraphicsPipeline* ios_crt_pipeline = NULL;
+typedef struct IOSCRTUniforms {
+    float strength, preset, width, height;
+    float frame, padding[3];
+} IOSCRTUniforms;
+static Uint32 ios_filter_frame;
+#endif
 static SDL_GPUSampler* sampler = NULL;
 static SDL_GPUTexture* canvas_texture = NULL;
 static SDL_GPUTexture* depth_texture = NULL;
@@ -606,6 +617,14 @@ static SDL_Window* SDLGPURenderer_Init(const SDLRenderBackendInitInfo* init_info
         create_pipeline(device, vertex_shader, screen_fragment_shader, swapchain_texture_format, false, false);
     scanline_pipeline =
         create_pipeline(device, vertex_shader, scanline_fragment_shader, swapchain_texture_format, false, false);
+#if CRS_PLATFORM_IOS
+    SDL_GPUShader* ios_shader = create_shader("ios_crt.frag", device, SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
+    if (ios_shader != NULL) {
+        ios_crt_pipeline = create_pipeline(device, vertex_shader, ios_shader, swapchain_texture_format, false, false);
+        SDL_ReleaseGPUShader(device, ios_shader);
+    }
+    if (ios_crt_pipeline == NULL) SDL_Log("iOS CRT filter unavailable: %s", SDL_GetError());
+#endif
 
     SDL_ReleaseGPUShader(device, vertex_shader);
     SDL_ReleaseGPUShader(device, solid_fragment_shader);
@@ -821,6 +840,9 @@ static void SDLGPURenderer_Quit() {
     SDL_ReleaseGPUGraphicsPipeline(device, palette_8_pipeline);
     SDL_ReleaseGPUGraphicsPipeline(device, screen_pipeline);
     SDL_ReleaseGPUGraphicsPipeline(device, scanline_pipeline);
+#if CRS_PLATFORM_IOS
+    if (ios_crt_pipeline) SDL_ReleaseGPUGraphicsPipeline(device, ios_crt_pipeline);
+#endif
     SDL_ReleaseGPUBuffer(device, vertex_buffer);
     SDL_ReleaseGPUTransferBuffer(device, vertex_transfer_buffer);
     SDL_ReleaseGPUBuffer(device, index_buffer);
@@ -1123,11 +1145,17 @@ static void SDLGPURenderer_RenderFrame(SDL_Rect viewport) {
             }
         );
 
+#if CRS_PLATFORM_IOS
+        const IOSOptions* ios = IOSOptions_Get();
+        const bool ios_filter = ios_crt_pipeline != NULL && ios->filter != IOS_FILTER_NONE && ios->filter_strength > 0;
+        SDL_BindGPUGraphicsPipeline(screen_pass, ios_filter ? ios_crt_pipeline : screen_pipeline);
+#else
         if (scanline_intensity > 0) {
             SDL_BindGPUGraphicsPipeline(screen_pass, scanline_pipeline);
         } else {
             SDL_BindGPUGraphicsPipeline(screen_pass, screen_pipeline);
         }
+#endif
 
         SDL_BindGPUVertexBuffers(
             screen_pass,
@@ -1164,6 +1192,17 @@ static void SDLGPURenderer_RenderFrame(SDL_Rect viewport) {
             1
         );
 
+#if CRS_PLATFORM_IOS
+        if (ios_filter) {
+            const IOSCRTUniforms uniforms = {
+                .strength = (float)ios->filter_strength / 100.0f,
+                .preset = (float)ios->filter,
+                .width = (float)viewport.w, .height = (float)viewport.h,
+                .frame = (float)(ios_filter_frame++ % 3600)
+            };
+            SDL_PushGPUFragmentUniformData(command_buffer, 0, &uniforms, sizeof(uniforms));
+        }
+#else
         SDL_PushGPUFragmentUniformData(
             command_buffer,
             0,
@@ -1172,6 +1211,7 @@ static void SDLGPURenderer_RenderFrame(SDL_Rect viewport) {
             }),
             sizeof(_ScanlineUniforms)
         );
+#endif
 
         SDL_DrawGPUIndexedPrimitives(screen_pass, 6, 1, 0, 0, 0);
 

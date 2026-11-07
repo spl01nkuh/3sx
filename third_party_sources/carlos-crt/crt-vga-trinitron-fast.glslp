@@ -1,0 +1,7 @@
+shaders = 1
+shader0 = shaders/sharp-shadowmask.glsl
+filter_linear0 = true
+
+MASK_INTENSITY = "0.150000"
+MASK_TRINITRON = "1.000000"
+

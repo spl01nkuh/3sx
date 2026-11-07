@@ -7,6 +7,7 @@
 #if CRS_PLATFORM_IOS
 #include "platform/input/ios/ios_touch.h"
 #include "platform/input/ios/ios_touch_state.h"
+#include "platform/app/ios/ios_options.h"
 #endif
 
 #include <SDL3/SDL.h>
@@ -213,6 +214,10 @@ static void get_gamepad_state(int id, Input_ButtonState* state) {
     state->left_stick_y = SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFTY);
     state->right_stick_x = SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_RIGHTX);
     state->right_stick_y = SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_RIGHTY);
+#if CRS_PLATFORM_IOS
+    IOSOptions_AdjustStick(&state->left_stick_x, &state->left_stick_y);
+    IOSOptions_AdjustStick(&state->right_stick_x, &state->right_stick_y);
+#endif
 }
 
 static void cleanup_state(Input_ButtonState* state) {

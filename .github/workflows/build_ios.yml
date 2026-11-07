@@ -76,7 +76,18 @@ jobs:
           /tmp/test-ios-touch
 
       - name: Test local AFS packaging helper
-        run: python3 -m unittest discover -s tools/tests -p 'test_bundle_ios_afs.py' -v
+        run: python3 -m unittest discover -s tools/tests -p 'test_*.py' -v
+
+      - name: Test iOS options logic
+        run: |
+          cc -std=c2x -DCRS_PLATFORM_IOS=1 -Isrc \
+            -Ibuild/ios-${{ matrix.sdk }}/_deps/threesx_sdl-src/include \
+            tools/tests/test-ios-options.c src/platform/app/ios/ios_options.c \
+            -lm -o /tmp/test-ios-options
+          /tmp/test-ios-options
+
+      - name: Compile iOS CRT Metal shader
+        run: xcrun --sdk iphoneos metal -x metal -c src/platform/video/sdl_gpu/shaders/compiled/msl/ios_crt.frag -o /tmp/ios-crt.air
 
       - name: Verify Apple bundle recognition with preloaded data
         run: swift tools/tests/test-ios-bundle.swift build/ios-${{ matrix.sdk }}/Release-${{ matrix.sdk == 'device' && 'iphoneos' || 'iphonesimulator' }}/3SX.app
@@ -86,7 +97,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 3SX-iOS-device-unsigned
-          path: build/ios-device/3SX-unsigned.ipa
+          path: |
+            build/ios-device/3SX-unsigned.ipa
+            build/ios-device/personalize-ios-ipa.py
+            build/ios-device/INSTALL.txt
           if-no-files-found: error
 
       - name: Upload simulator app

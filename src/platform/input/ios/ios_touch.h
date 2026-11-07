@@ -8,5 +8,6 @@ bool IOSTouch_Init(SDL_Window* window);
 void IOSTouch_Quit(void);
 void IOSTouch_Reset(void);
 void IOSTouch_GetButtonState(Input_ButtonState* state);
+void IOSTouch_RefreshOptions(void);
 
 #endif

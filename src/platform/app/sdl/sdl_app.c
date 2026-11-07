@@ -13,6 +13,7 @@
 
 #if CRS_PLATFORM_IOS
 #include "platform/input/ios/ios_touch.h"
+#include "platform/app/ios/ios_options.h"
 #include "port/sound/spu.h"
 #endif
 
@@ -85,6 +86,9 @@ static Uint64 last_frame_end_time = 0;
 static bool app_suspended;
 static bool adx_was_paused;
 static bool spu_was_paused;
+static bool options_paused;
+static bool options_adx_was_paused;
+static bool options_spu_was_paused;
 #endif
 
 static Uint64 last_mouse_motion_time = 0;
@@ -172,6 +176,9 @@ static bool full_init() {
     bool renderer_initialized = false;
     bool resource_attempted = false;
     Config_Init();
+#if CRS_PLATFORM_IOS
+    IOSOptions_Load();
+#endif
     Keymap_Init();
     init_scalemode();
 
@@ -333,6 +340,7 @@ static void begin_frame() {
     Resource_RunServer();
 }
 
+#if !CRS_PLATFORM_IOS
 static void center_rect(SDL_Rect* rect, int win_w, int win_h) {
     rect->x = (win_w - rect->w) / 2;
     rect->y = (win_h - rect->h) / 2;
@@ -371,7 +379,21 @@ static SDL_Rect fit_integer_rect(int win_w, int win_h, int pixel_w, int pixel_h)
     return rect;
 }
 
+#endif
+
 static SDL_Rect get_letterbox_rect(int win_w, int win_h) {
+#if CRS_PLATFORM_IOS
+    SDL_Rect available = { 0, 0, win_w, win_h };
+    SDL_Rect safe;
+    int logical_w, logical_h;
+    if (SDL_GetWindowSafeArea(window, &safe) && SDL_GetWindowSize(window, &logical_w, &logical_h) && logical_w > 0 && logical_h > 0) {
+        available = (SDL_Rect) {
+            safe.x * win_w / logical_w, safe.y * win_h / logical_h,
+            safe.w * win_w / logical_w, safe.h * win_h / logical_h
+        };
+    }
+    return IOSOptions_Viewport(available);
+#else
     switch (scale_mode) {
     case SCALEMODE_NEAREST:
         return fit_4_by_3_rect(win_w, win_h);
@@ -386,6 +408,7 @@ static SDL_Rect get_letterbox_rect(int win_w, int win_h) {
     default:
         return fit_4_by_3_rect(win_w, win_h);
     }
+#endif
 }
 
 static void update_metrics(Uint64 sleep_time) {
@@ -512,6 +535,22 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 #if CRS_PLATFORM_IOS
     if (app_suspended) {
         return SDL_APP_CONTINUE;
+    }
+    if (phase == APP_PHASE_INITIALIZED && IOSOptions_IsOpen()) {
+        if (!options_paused) {
+            options_adx_was_paused = ADX_IsPaused();
+            options_spu_was_paused = SPU_IsPaused();
+            ADX_Pause(true); SPU_Pause(true);
+            options_paused = true;
+        }
+        return SDL_APP_CONTINUE;
+    }
+    if (options_paused) {
+        ADX_Pause(options_adx_was_paused); SPU_Pause(options_spu_was_paused);
+        options_paused = false;
+        IOSTouch_Reset();
+        frame_deadline = 0;
+        last_frame_end_time = SDL_GetTicksNS();
     }
 #endif
 

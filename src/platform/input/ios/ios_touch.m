@@ -4,6 +4,7 @@
 
 #include "platform/input/ios/ios_touch.h"
 #include "platform/input/ios/ios_touch_state.h"
+#include "platform/app/ios/ios_options.h"
 
 // Keep UIKit controls above the SDL Metal view. Each finger is tracked separately
 // so directions, chords and sliding between attacks work without keyboard events.
@@ -66,6 +67,7 @@
 
 - (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent*)event {
     (void)event;
+    if (!IOSOptions_Get()->touch_enabled || IOSOptions_IsOpen()) return NO;
     if (CGRectContainsPoint(_dpad, point) || CGRectContainsPoint(_selectButton, point) ||
         CGRectContainsPoint(_startButton, point)) {
         return YES;
@@ -190,6 +192,7 @@
 @end
 
 static ThreeSXTouchView* touch_view;
+static UIButton* options_button;
 
 bool IOSTouch_Init(SDL_Window* window) {
     UIWindow* nativeWindow = (__bridge UIWindow*)SDL_GetPointerProperty(
@@ -203,10 +206,30 @@ bool IOSTouch_Init(SDL_Window* window) {
     [parent addSubview:touch_view];
     [touch_view setNeedsLayout];
     [touch_view layoutIfNeeded];
+    options_button = [UIButton buttonWithType:UIButtonTypeSystem];
+    [options_button setImage:[UIImage systemImageNamed:@"gearshape.fill"] forState:UIControlStateNormal];
+    options_button.tintColor = UIColor.whiteColor;
+    options_button.backgroundColor = [UIColor colorWithWhite:0 alpha:0.55];
+    options_button.layer.cornerRadius = 22;
+    options_button.accessibilityLabel = @"iOS options";
+    options_button.translatesAutoresizingMaskIntoConstraints = NO;
+    [options_button addAction:[UIAction actionWithHandler:^(UIAction* action) {
+        (void)action; IOSOptions_Present(window);
+    }] forControlEvents:UIControlEventTouchUpInside];
+    [parent addSubview:options_button];
+    [NSLayoutConstraint activateConstraints:@[
+        [options_button.topAnchor constraintEqualToAnchor:parent.safeAreaLayoutGuide.topAnchor constant:8],
+        [options_button.trailingAnchor constraintEqualToAnchor:parent.safeAreaLayoutGuide.trailingAnchor constant:-8],
+        [options_button.widthAnchor constraintEqualToConstant:44],
+        [options_button.heightAnchor constraintEqualToConstant:44]
+    ]];
+    IOSTouch_RefreshOptions();
     return true;
 }
 
 void IOSTouch_Quit(void) {
+    [options_button removeFromSuperview];
+    options_button = nil;
     [touch_view resetTouches];
     [touch_view removeFromSuperview];
     touch_view = nil;
@@ -221,9 +244,14 @@ void IOSTouch_GetButtonState(Input_ButtonState* state) {
         return;
     }
     SDL_zerop(state);
-    if (touch_view) {
+    if (touch_view && IOSOptions_Get()->touch_enabled && !IOSOptions_IsOpen()) {
         *state = [touch_view buttonState];
     }
+}
+
+void IOSTouch_RefreshOptions(void) {
+    [touch_view resetTouches];
+    touch_view.hidden = !IOSOptions_Get()->touch_enabled;
 }
 
 #endif

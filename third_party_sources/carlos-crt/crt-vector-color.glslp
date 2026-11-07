@@ -1,0 +1,8 @@
+shaders = 2
+shader0 = ../interpolation/shaders/sharp-bilinear-simple.glsl
+filter_linear0 = true
+shader1 = ../crt/shaders/dotmask.glsl
+filter_linear1 = true
+
+response_time = "0.111000"
+

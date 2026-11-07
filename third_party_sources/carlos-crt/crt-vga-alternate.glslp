@@ -1,0 +1,11 @@
+shaders = 2
+shader0 = ../interpolation/shaders/sharp-bilinear-simple.glsl
+filter_linear0 = true
+shader1 = shaders/crt-easymode-fast.glsl
+filter_linear1 = false
+
+MASK_STRENGTH = "0.250000"
+MASK_DOT_WIDTH = "2.000000"
+MASK_STAGGER = "3.000000"
+SCANLINE_STRENGTH = "0.000000"
+

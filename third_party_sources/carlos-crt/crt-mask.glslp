@@ -1,0 +1,11 @@
+shaders = 2
+shader0 = ../crt/shaders/crt-consumer/linearize.glsl
+filter_linear0 = false
+shader1 = ../crt/shaders/crt-geom-mini.glsl
+filter_linear1 = true
+
+feedback_pass = 0
+g_in = 2.25
+CURVATURE = "0.000000"
+interlace_detect = "0.000000"
+

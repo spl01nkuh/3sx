@@ -1,0 +1,13 @@
+shaders = 2
+shader0 = ../interpolation/shaders/sharp-bilinear-simple.glsl
+filter_linear0 = true
+shader1 = ../crt/shaders/crt-pi-vertical.glsl
+filter_linear1 = true
+
+CURVATURE_X = "0.000000"
+CURVATURE_Y = "0.000000"
+MASK_BRIGHTNESS = "0.600000"
+SCANLINE_WEIGHT = "3.200000"
+SCANLINE_GAP_BRIGHTNESS = "0.620000"
+BLOOM_FACTOR = "2.150000"
+

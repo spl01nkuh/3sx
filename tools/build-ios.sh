@@ -82,5 +82,22 @@ if [[ "$SDK" == device && "$SIGN" == OFF ]]; then
     ditto "$BUILD_DIR/$CONFIGURATION-$SYSROOT/3SX.app" "$PACKAGE_DIR/Payload/3SX.app"
     ditto -c -k --sequesterRsrc --keepParent "$PACKAGE_DIR/Payload" "$BUILD_DIR/3SX-unsigned.ipa"
     echo "Unsigned IPA: $BUILD_DIR/3SX-unsigned.ipa"
+    cp "$ROOT_DIR/tools/personalize-ios-ipa.py" "$BUILD_DIR/personalize-ios-ipa.py"
+    cat > "$BUILD_DIR/INSTALL.txt" <<'INSTALL'
+3SX iOS
+
+1. Sign and install 3SX-unsigned.ipa with iLoader or your sideloading tool.
+2. Transfer the extracted SF33RD.AFS to Files on your phone.
+3. Open 3SX, tap Import SF33RD.AFS, and select it.
+
+Tap the gear in the top right for iOS options. Settings save automatically.
+Update the existing app using the same signing account to retain game data.
+
+Optional PERSONAL icon (the public app contains no personal icon):
+Install Python and Pillow: py -3 -m pip install pillow
+Run: py -3 personalize-ios-ipa.py
+The file pickers ask for the downloaded IPA, your local icon, and an output.
+Sign and install the resulting private IPA. No image is uploaded by this tool.
+INSTALL
     echo "Sign the IPA with your sideloading tool before installing it on a device."
 fi

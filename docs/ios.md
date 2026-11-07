@@ -4,6 +4,40 @@ This branch adds an experimental iPhone and iPad target using SDL3's Metal rende
 
 The build can run on a hosted macOS GitHub Actions runner, so you do not need to own a Mac to compile it. Installing the resulting app on a physical iPhone or iPad is a separate signing step.
 
+## Recommended phone setup
+
+1. Download and extract the device build artifact. It contains `3SX-unsigned.ipa` and `INSTALL.txt`.
+2. Sign and install the IPA with iLoader or your usual sideloading app.
+3. Put the extracted `SF33RD.AFS` in Files on the phone, open 3SX, and tap **Import SF33RD.AFS**.
+
+The phone copies and verifies the archive. No desktop AFS script is required.
+When updating, update the existing app with the same signing account; avoid deleting the app if you want to retain its imported data and settings.
+
+## iOS options
+
+Tap the small gear in the top-right safe area. It stays available when touch controls are hidden. The game and audio pause while the menu is open. Changes apply when the menu closes and save automatically between launches.
+
+- Toggle touch controls without disconnecting controllers.
+- Choose a Carlos CRT preset, with adjustable strength; Off is the default.
+- Set 4:3, original pixel aspect, or Fill, and scale the screen from 50% to 100% within the safe area.
+- Adjust analog-stick sensitivity (50–200%) and a radial dead zone (0–35%). Defaults preserve the original response. The physical D-pad is unaffected.
+- Reset just iOS options without deleting game data.
+
+All 28 upstream presets and eight GLSL source shaders are retained in `third_party_sources/carlos-crt/`, with attribution. The menu currently provides 15 Metal effects plus Off. Multi-pass and feedback presets requiring additional libretro dependencies remain retained as source for future integration; they are not presented as working effects.
+
+## Optional private app icon
+
+Personal icons are deliberately excluded from the public repository and build artifacts. The device ZIP includes a generic local-only `personalize-ios-ipa.py` helper, which uses file pickers to choose your IPA, icon, and private output file. The tool makes no uploads or network calls.
+
+Install Python with Tk support, install Pillow once, then run the helper from its extracted folder:
+
+```powershell
+py -3 -m pip install pillow
+py -3 personalize-ios-ipa.py
+```
+
+Select the downloaded IPA, your local `.ico` or `.png`, and a new output name. Sign and install that output with iLoader. Keep personal image files and the personalized IPA outside your public repository. The supplied image is converted locally into the required iPhone/iPad PNG sizes; it is never part of the public CI build.
+
 ## Requirements
 
 - For the hosted build: a GitHub repository containing this branch, with GitHub Actions enabled. Runner availability and usage limits depend on your GitHub account.
@@ -62,7 +96,7 @@ git push -u origin main
 
 If Git asks for your name and email, configure them as instructed by Git, then retry the commit. Complete GitHub's sign-in prompt when pushing. Keep the hidden `.github` directory: it contains the hosted build workflow. Your game archive stays outside the repository.
 
-## Include the AFS in your IPA without uploading it
+## Advanced: include the AFS in your IPA without uploading it
 
 1. Extract `SF33RD.AFS` from your `.7z` with 7-Zip on your computer. The helper needs the extracted AFS, not the `.7z` archive.
 2. Download `3SX-unsigned.ipa` from the hosted build, as described above.
@@ -86,7 +120,7 @@ Download the unsigned IPA from the completed hosted build and import it into you
 
 On first launch, tap **Import SF33RD.AFS** and select the extracted archive from Files. The app copies and validates it before placing it at `Documents/resources/SF33RD.AFS` inside its sandbox. A failed or cancelled import can be retried. Alternatively, use Files > On My iPhone/iPad > 3SX, or Finder file sharing, to place the archive in the app's `resources` folder, then relaunch the app. Keep the filename `SF33RD.AFS`.
 
-The landscape touch overlay has a sliding D-pad on the left, **LP MP HP / LK MK HK** on the right, and **SELECT / START** near the bottom center. It supports holding a direction while pressing multiple attack buttons. Attack labels describe the game's default button assignment; remapping buttons in the game changes their actions. There is no touch layout editor or hide toggle yet.
+The landscape touch overlay has a sliding D-pad on the left, **LP MP HP / LK MK HK** on the right, and **SELECT / START** near the bottom center. It supports holding a direction while pressing multiple attack buttons. Attack labels describe the game's default button assignment; remapping buttons in the game changes their actions. Touch visibility is controlled by the gear menu; there is no touch layout editor yet.
 
 Touch input controls player 1. You can also pair a supported controller in the device's Bluetooth settings. Configuration and keymap files live in the app's Documents directory.
 
@@ -137,7 +171,7 @@ Open the generated project, select the `3sx` scheme and your connected device, t
 
 - Metal rendering, native AFS import, sandbox paths, on-screen controls, and background/foreground handling are included in the prototype.
 - Netplay, replay statcheck, and the desktop debug UI are excluded from the initial iOS target.
-- An in-app controller configuration screen is not implemented.
+- The iOS menu adjusts stick response. Button remapping remains in the game’s own options.
 - Hosted Xcode Release builds for iPhone and simulator pass, including UIKit and CommonCrypto compilation and the portable touch/IPA helper tests. The verified code commit is `b6da0bb292c897fffae647bacff1ffd81ba119b3`.
 - Signed installation, frame-rate measurement, audio output, and full gameplay on a physical device remain untested.
 

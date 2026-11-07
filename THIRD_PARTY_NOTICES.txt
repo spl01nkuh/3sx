@@ -104,3 +104,11 @@ License MIT license, as provided by Omar Cornut
 
 Copyright:
 - Copyright (C) Omar Cornut.
+
+Carlos' custom CRT shader presets / CRT EasyMode
+https://github.com/carlosefr/retroarch-shaders
+CRT Shader by EasyMode; performance modifications and presets by Carlos.
+CRT EasyMode is marked "License: GPL". Other Carlos shader sources are
+GPL-2.0-or-later, as stated in their retained headers. Original presets and
+shader sources are in third_party_sources/carlos-crt; Metal adaptations for
+3SX are in src/platform/video/sdl_gpu/shaders/compiled/msl/ios_crt.frag.
