@@ -337,7 +337,7 @@ void SPU_SDL_CB(void* user, SDL_AudioStream* stream, int additional_amount, int 
             }
         }
 
-        SDL_PutAudioStreamData(stream, outbuf, (batch_count * sizeof(s16)) << 1);
+        SDL_PutAudioStreamData(stream, outbuf, (int)((batch_count * sizeof(s16)) << 1));
         samples_per_channel -= batch_count;
     }
 
