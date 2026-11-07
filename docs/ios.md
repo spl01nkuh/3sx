@@ -6,6 +6,8 @@ The build can run on a hosted macOS GitHub Actions runner, so you do not need to
 
 ## Recommended phone setup
 
+[Download the 0.2.0 iPhone build ZIP](https://github.com/spl01nkuh/3sx/actions/runs/42341591104/artifacts/13562491090). Both iPhone and simulator jobs passed, including native menu compilation, Metal shader compilation, options/controller tests, and Apple bundle recognition. The new options still need hands-on device validation.
+
 1. Download and extract the device build artifact. It contains `3SX-unsigned.ipa` and `INSTALL.txt`.
 2. Sign and install the IPA with iLoader or your usual sideloading app.
 3. Put the extracted `SF33RD.AFS` in Files on the phone, open 3SX, and tap **Import SF33RD.AFS**.
@@ -182,3 +184,5 @@ Before treating the port as playable, test archive import, menus, a complete mat
 Bundled data in version 0.1.1 uses `game-data`, avoiding Apple's reserved bundle Resources directory. Re-download both the updated IPA and helper before recreating a preloaded IPA from an older build.
 
 The corrected iPhone build passed the Apple Foundation bundle-recognition check with preloaded data present in [run 42338032772](https://github.com/spl01nkuh/3sx/actions/runs/42338032772). Physical-device installation still requires confirmation.
+
+Version 0.2.0 build 3 was verified in [run 42341591104](https://github.com/spl01nkuh/3sx/actions/runs/42341591104). The public ZIP was inspected to confirm that it contains the generic local-only personalization helper and no personal icon or AFS.
