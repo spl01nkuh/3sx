@@ -152,6 +152,9 @@ set_target_properties(3sx PROPERTIES
     XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
     XCODE_ATTRIBUTE_CODE_SIGN_STYLE Automatic
     XCODE_ATTRIBUTE_ENABLE_BITCODE NO
+    # The shared game code uses PS2-width values. Keep Xcode aligned with the
+    # project's desktop warning settings; -Wall and -Werror remain enabled.
+    XCODE_ATTRIBUTE_CLANG_WARN_64_TO_32_BIT_CONVERSION NO
     XCODE_ATTRIBUTE_SKIP_INSTALL NO
     XCODE_ATTRIBUTE_INSTALL_PATH "$(LOCAL_APPS_DIR)"
 )
