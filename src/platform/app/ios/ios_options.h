@@ -4,11 +4,8 @@
 #include <SDL3/SDL.h>
 
 typedef enum IOSFilter {
-    IOS_FILTER_NONE, IOS_FILTER_SCANLINES, IOS_FILTER_CRT,
-    IOS_FILTER_SLOT, IOS_FILTER_SHARP_SLOT, IOS_FILTER_MONITOR,
-    IOS_FILTER_EGA, IOS_FILTER_EGA_OLD, IOS_FILTER_VGA, IOS_FILTER_VGA_OLD,
-    IOS_FILTER_FAST_SLOT, IOS_FILTER_FAST_GRILLE, IOS_FILTER_COLOR,
-    IOS_FILTER_NOISE, IOS_FILTER_ADAPTIVE, IOS_FILTER_COMPOSITE, IOS_FILTER_COUNT
+    IOS_FILTER_NONE, IOS_FILTER_SHARP, IOS_FILTER_ZFAST, IOS_FILTER_LOTTES,
+    IOS_FILTER_CALIGARI, IOS_FILTER_EASYMODE, IOS_FILTER_COMPOSITE, IOS_FILTER_COUNT
 } IOSFilter;
 typedef enum IOSAspect { IOS_ASPECT_4_3, IOS_ASPECT_NATIVE, IOS_ASPECT_FILL } IOSAspect;
 typedef struct IOSOptions {
@@ -19,6 +16,8 @@ typedef struct IOSOptions {
     int aspect;
     int stick_sensitivity;
     int stick_deadzone;
+    int screen_width_percent;
+    int screen_height_percent;
 } IOSOptions;
 
 IOSOptions IOSOptions_Defaults(void);
@@ -27,6 +26,8 @@ void IOSOptions_Apply(IOSOptions options);
 SDL_Rect IOSOptions_Viewport(SDL_Rect available);
 void IOSOptions_AdjustStick(Sint16* x, Sint16* y);
 const char* IOSOptions_FilterName(int filter);
+// NULL when filters are ready; otherwise a readable initialization failure.
+const char* IOSOptions_FilterError(void);
 
 // UIKit persistence and presentation, called on the SDL main thread.
 void IOSOptions_Load(void);

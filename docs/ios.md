@@ -1,12 +1,12 @@
 # iOS prototype
 
-This branch adds an experimental iPhone and iPad target using SDL3's Metal renderer, with on-screen touch controls for offline play. Release builds for iPhone and simulator pass on a hosted Mac. Signing, installation, and gameplay testing on a physical device are still required.
+This branch adds an iPhone and iPad target using SDL3's Metal renderer, with on-screen touch controls for offline play. The previous build has been confirmed working on an iPhone with touch and an Xbox controller. New features still need hands-on device validation.
 
 The build can run on a hosted macOS GitHub Actions runner, so you do not need to own a Mac to compile it. Installing the resulting app on a physical iPhone or iPad is a separate signing step.
 
 ## Recommended phone setup
 
-[Download the 0.2.0 iPhone build ZIP](https://github.com/spl01nkuh/3sx/actions/runs/42341591104/artifacts/13562491090). Both iPhone and simulator jobs passed, including native menu compilation, Metal shader compilation, options/controller tests, and Apple bundle recognition. The new options still need hands-on device validation.
+The next update is version **0.3.0 build 4**. Its download link will be added here after the hosted iPhone build passes. The previous [0.2.0 iPhone build ZIP](https://github.com/spl01nkuh/3sx/actions/runs/42341591104/artifacts/13562491090) remains available while the update builds.
 
 1. Download and extract the device build artifact. It contains `3SX-unsigned.ipa` and `INSTALL.txt`.
 2. Sign and install the IPA with iLoader or your usual sideloading app.
@@ -17,15 +17,23 @@ When updating, update the existing app with the same signing account; avoid dele
 
 ## iOS options
 
-Tap the small gear in the top-right safe area. It stays available when touch controls are hidden. The game and audio pause while the menu is open. Changes apply when the menu closes and save automatically between launches.
+Tap the small gear in the top-right safe area. It hides after five seconds without touch input; touch anywhere to reveal it again, including when touch controls are disabled. It stays visible while touching or using the menu. The game and audio pause while the menu or control editor is open. Changes apply when the menu closes and save automatically between launches.
 
 - Toggle touch controls without disconnecting controllers.
-- Choose a Carlos CRT preset, with adjustable strength; Off is the default.
-- Set 4:3, original pixel aspect, or Fill, and scale the screen from 50% to 100% within the safe area.
-- Adjust analog-stick sensitivity (50–200%) and a radial dead zone (0–35%). Defaults preserve the original response. The physical D-pad is unaffected.
+- Choose **Hybrid**, **Stick**, or **D-pad** for the touch direction control.
+- Open **Edit controls & custom buttons** to drag and resize controls, or add custom simultaneous button combinations.
+- Choose Sharp Bilinear, CRT zfast, CRT Lottes, CRT Caligari, CRT EasyMode, or Composite TV, with adjustable strength; Off is the default.
+- Set 4:3, original pixel aspect, or Fill. **Screen size** scales both axes from 25–100%; separate **Screen width** and **Screen height** sliders stretch each axis from 25–200%. Values above 100% zoom and can crop the picture. Set all three to 100% to restore the fitted aspect ratio.
+- Adjust controller stick sensitivity (1–100%, default 50%) and radial dead zone (0–35%). Higher sensitivity activates a direction with less stick travel. It works even with the game's legacy analog-stick option disabled. The physical D-pad is unaffected.
 - Reset just iOS options without deleting game data.
 
-All 28 upstream presets and eight GLSL source shaders are retained in `third_party_sources/carlos-crt/`, with attribution. The menu currently provides 15 Metal effects plus Off. Multi-pass and feedback presets requiring additional libretro dependencies remain retained as source for future integration; they are not presented as working effects.
+All 28 Carlos presets and eight GLSL sources remain in `third_party_sources/carlos-crt/`, with attribution. Pinned original Lottes, zfast and Caligari sources and licenses are in `third_party_sources/libretro-crt/`. The menu provides six distinct single-pass Metal adaptations plus Off: crisp scaling, flat scanlines, curved Gaussian-beam CRT, phosphor dots, slot mask, and YIQ color bleed/noise. Multi-pass and feedback presets requiring additional libretro dependencies remain retained as source for future integration. A shader initialization failure is shown in the filter menu instead of silently pretending filters work.
+
+## Touch layout and custom buttons
+
+In **iOS Options → Edit controls & custom buttons**, drag any control to move it. Tap a control to adjust its size and position precisely. **Controls** lists every control, including ones covered by another control. The direction **Style** menu offers the same Hybrid / Stick / D-pad choices as settings. A normal stick uses a circular dead zone and a movable thumb; the hybrid preserves the original sliding control. All three produce the game's eight digital movement directions.
+
+Use **Add** to create up to 16 custom buttons. Give each a name and select one or more bindings from the six attacks, Start, Select, and four directions. For example, select LP + MP + HP for a PPP button. These are simultaneous holds; timed macros are not supported. Buttons follow the game's current mapping. Controls can be resized, custom buttons can be deleted, and **Reset** restores the layout after confirmation. Layout and custom buttons save separately from the other iOS options.
 
 ## Optional private app icon
 
@@ -122,7 +130,7 @@ Download the unsigned IPA from the completed hosted build and import it into you
 
 On first launch, tap **Import SF33RD.AFS** and select the extracted archive from Files. The app copies and validates it before placing it at `Documents/resources/SF33RD.AFS` inside its sandbox. A failed or cancelled import can be retried. Alternatively, use Files > On My iPhone/iPad > 3SX, or Finder file sharing, to place the archive in the app's `resources` folder, then relaunch the app. Keep the filename `SF33RD.AFS`.
 
-The landscape touch overlay has a sliding D-pad on the left, **LP MP HP / LK MK HK** on the right, and **SELECT / START** near the bottom center. It supports holding a direction while pressing multiple attack buttons. Attack labels describe the game's default button assignment; remapping buttons in the game changes their actions. Touch visibility is controlled by the gear menu; there is no touch layout editor yet.
+The default landscape touch overlay has a hybrid direction control on the left, **LP MP HP / LK MK HK** on the right, and **SELECT / START** near the bottom center. It supports holding a direction while pressing multiple attack buttons. Attack labels describe the game's default button assignment; remapping buttons in the game changes their actions. Use the gear menu to hide controls, change direction style, or edit the layout.
 
 Touch input controls player 1. You can also pair a supported controller in the device's Bluetooth settings. Configuration and keymap files live in the app's Documents directory.
 
@@ -173,16 +181,16 @@ Open the generated project, select the `3sx` scheme and your connected device, t
 
 - Metal rendering, native AFS import, sandbox paths, on-screen controls, and background/foreground handling are included in the prototype.
 - Netplay, replay statcheck, and the desktop debug UI are excluded from the initial iOS target.
-- The iOS menu adjusts stick response. Button remapping remains in the game’s own options.
-- Hosted Xcode Release builds for iPhone and simulator pass, including UIKit and CommonCrypto compilation and the portable touch/IPA helper tests. The verified code commit is `b6da0bb292c897fffae647bacff1ffd81ba119b3`.
-- Signed installation, frame-rate measurement, audio output, and full gameplay on a physical device remain untested.
+- The iOS menu adjusts stick response, screen geometry, filters and touch layout. Button remapping remains in the game's own options; custom buttons can hold several mapped buttons together.
+- Previous hosted Xcode Release builds for iPhone and simulator pass, including UIKit and CommonCrypto compilation and Apple bundle recognition. Version 0.3.0 adds regression tests through the real controller-to-game input path, portable layout and display tests, and a native Metal image test that explicitly reports when no GPU is available.
+- The user confirmed signed installation and gameplay with touch and Xbox input on the previous build. The new editor, control styles, manual stretching and filters still need physical-device feedback. Frame-rate measurements remain outstanding.
 
 Additional Linux host checks passed with GCC and Clang for C syntax in Release and Debug, portable touch direction/chord/controller merging, malformed AFS headers, bundle resource selection, build-script syntax, plist parsing, and CMake configuration logic. Host C checks use `CHECKSUM=0`; the hosted Xcode builds validate the Apple-specific compilation. The source is based on upstream commit `6187364`.
 
-Before treating the port as playable, test archive import, menus, a complete match with simultaneous touch inputs, audio interruptions, landscape rotation, and background/resume on a physical device. Simulator testing can help with startup and import, but cannot establish device performance or controller compatibility.
+For the update, test all three direction styles, custom button combinations, stretched/zoomed display sizes, filter visibility, idle gear hiding, and background/resume on a physical device. Simulator testing cannot establish device performance or controller compatibility.
 
 Bundled data in version 0.1.1 uses `game-data`, avoiding Apple's reserved bundle Resources directory. Re-download both the updated IPA and helper before recreating a preloaded IPA from an older build.
 
-The corrected iPhone build passed the Apple Foundation bundle-recognition check with preloaded data present in [run 42338032772](https://github.com/spl01nkuh/3sx/actions/runs/42338032772). Physical-device installation still requires confirmation.
+The corrected iPhone build passed the Apple Foundation bundle-recognition check with preloaded data present in [run 42338032772](https://github.com/spl01nkuh/3sx/actions/runs/42338032772). Phone-side AFS import is the recommended setup and has been confirmed working by the user.
 
 Version 0.2.0 build 3 was verified in [run 42341591104](https://github.com/spl01nkuh/3sx/actions/runs/42341591104). The public ZIP was inspected to confirm that it contains the generic local-only personalization helper and no personal icon or AFS.

@@ -106,9 +106,20 @@ static SDL_GPUGraphicsPipeline* scanline_pipeline = NULL;
 static SDL_GPUGraphicsPipeline* ios_crt_pipeline = NULL;
 typedef struct IOSCRTUniforms {
     float strength, preset, width, height;
-    float frame, padding[3];
+    float source_width, source_height, frame, padding;
 } IOSCRTUniforms;
+static_assert(sizeof(IOSCRTUniforms) == 32, "Metal filter uniforms must occupy two 16-byte blocks");
+static_assert(offsetof(IOSCRTUniforms, source_width) == 16, "Metal source block must start at byte 16");
+static_assert(offsetof(IOSCRTUniforms, frame) == 24, "Metal frame value must be at byte 24");
+static_assert(IOS_FILTER_NONE == 0 && IOS_FILTER_SHARP == 1 && IOS_FILTER_ZFAST == 2 &&
+    IOS_FILTER_LOTTES == 3 && IOS_FILTER_CALIGARI == 4 && IOS_FILTER_EASYMODE == 5 &&
+    IOS_FILTER_COMPOSITE == 6 && IOS_FILTER_COUNT == 7, "Filter IDs must match the Metal shader catalog");
+static char ios_filter_error[512];
 static Uint32 ios_filter_frame;
+
+const char* IOSOptions_FilterError(void) {
+    return ios_filter_error[0] != '\0' ? ios_filter_error : NULL;
+}
 #endif
 static SDL_GPUSampler* sampler = NULL;
 static SDL_GPUTexture* canvas_texture = NULL;
@@ -618,12 +629,20 @@ static SDL_Window* SDLGPURenderer_Init(const SDLRenderBackendInitInfo* init_info
     scanline_pipeline =
         create_pipeline(device, vertex_shader, scanline_fragment_shader, swapchain_texture_format, false, false);
 #if CRS_PLATFORM_IOS
+    ios_filter_error[0] = '\0';
+    ios_crt_pipeline = NULL;
+    ios_filter_frame = 0;
     SDL_GPUShader* ios_shader = create_shader("ios_crt.frag", device, SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
     if (ios_shader != NULL) {
         ios_crt_pipeline = create_pipeline(device, vertex_shader, ios_shader, swapchain_texture_format, false, false);
         SDL_ReleaseGPUShader(device, ios_shader);
     }
-    if (ios_crt_pipeline == NULL) SDL_Log("iOS CRT filter unavailable: %s", SDL_GetError());
+    if (ios_crt_pipeline == NULL) {
+        SDL_snprintf(ios_filter_error, sizeof(ios_filter_error), "Graphics filters could not start: %s", SDL_GetError());
+        SDL_Log("%s", ios_filter_error);
+    } else {
+        SDL_Log("iOS graphics filters ready: Metal fragment buffer 0, 32-byte uniforms, six filter families");
+    }
 #endif
 
     SDL_ReleaseGPUShader(device, vertex_shader);
@@ -842,6 +861,7 @@ static void SDLGPURenderer_Quit() {
     SDL_ReleaseGPUGraphicsPipeline(device, scanline_pipeline);
 #if CRS_PLATFORM_IOS
     if (ios_crt_pipeline) SDL_ReleaseGPUGraphicsPipeline(device, ios_crt_pipeline);
+    ios_crt_pipeline = NULL;
 #endif
     SDL_ReleaseGPUBuffer(device, vertex_buffer);
     SDL_ReleaseGPUTransferBuffer(device, vertex_transfer_buffer);
@@ -1198,6 +1218,7 @@ static void SDLGPURenderer_RenderFrame(SDL_Rect viewport) {
                 .strength = (float)ios->filter_strength / 100.0f,
                 .preset = (float)ios->filter,
                 .width = (float)viewport.w, .height = (float)viewport.h,
+                .source_width = (float)CANVAS_WIDTH, .source_height = (float)CANVAS_HEIGHT,
                 .frame = (float)(ios_filter_frame++ % 3600)
             };
             SDL_PushGPUFragmentUniformData(command_buffer, 0, &uniforms, sizeof(uniforms));

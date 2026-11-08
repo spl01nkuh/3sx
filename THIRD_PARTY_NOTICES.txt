@@ -112,3 +112,18 @@ CRT EasyMode is marked "License: GPL". Other Carlos shader sources are
 GPL-2.0-or-later, as stated in their retained headers. Original presets and
 shader sources are in third_party_sources/carlos-crt; Metal adaptations for
 3SX are in src/platform/video/sdl_gpu/shaders/compiled/msl/ios_crt.frag.
+
+CRT Lottes / zfast / CRT Caligari
+--------------------------------
+Primary sources: https://github.com/libretro/glsl-shaders
+Pinned source commit: 1aaabbebdd88a8a89a82edfdc94e10580c99ffdd
+
+CRT Lottes is explicitly public domain, by Timothy Lottes.
+zfast CRT: Copyright (C) 2017 Greg Hogan (SoltanGris42), GPL-2.0-or-later.
+CRT Caligari: Copyright (C) 2011 caligari; ported by Hyllian, GPL-2.0-or-later.
+
+Unmodified source files, original notices and GPL text are retained in
+third_party_sources/libretro-crt. The 3SX single-pass Metal adaptations use
+Gaussian beams/curvature/RGB mask (Lottes), cubic scaling and adaptive scanlines
+(zfast), and gamma-corrected phosphor spots (Caligari). These adaptations are
+distributed under GPL-3.0-or-later. See the retained ORIGIN.md for source links.

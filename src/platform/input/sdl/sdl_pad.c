@@ -12,6 +12,10 @@
 
 #include <SDL3/SDL.h>
 
+#if CRS_PLATFORM_IOS
+#include <math.h>
+#endif
+
 #define INPUT_SOURCES_MAX 2
 
 typedef enum SDLPad_InputType {
@@ -190,6 +194,28 @@ static void get_keyboard_state(Input_ButtonState* state) {
 #endif
 }
 
+#if CRS_PLATFORM_IOS
+static bool stick_directions(Input_ButtonState* state, Sint16 x, Sint16 y) {
+    const float ax = fabsf((float)x);
+    const float ay = fabsf((float)y);
+    if (ax * ax + ay * ay < 16384.0f * 16384.0f) {
+        return false;
+    }
+
+    // Match the PS2 pad's eight 45-degree sectors, including diagonal inputs.
+    const float diagonal_boundary = 0.41421356237f; // tan(22.5 degrees)
+    if (ax >= ay * diagonal_boundary) {
+        state->dpad_left = x < 0;
+        state->dpad_right = x > 0;
+    }
+    if (ay >= ax * diagonal_boundary) {
+        state->dpad_up = y < 0;
+        state->dpad_down = y > 0;
+    }
+    return true;
+}
+#endif
+
 static void get_gamepad_state(int id, Input_ButtonState* state) {
     SDL_Gamepad* pad = input_sources[id].gamepad.gamepad;
 
@@ -217,6 +243,14 @@ static void get_gamepad_state(int id, Input_ButtonState* state) {
 #if CRS_PLATFORM_IOS
     IOSOptions_AdjustStick(&state->left_stick_x, &state->left_stick_y);
     IOSOptions_AdjustStick(&state->right_stick_x, &state->right_stick_y);
+    // The PS2 game's saved Analog Stick option can discard analog axes. Send
+    // tuned directions as ordinary pad buttons so the iOS setting always works.
+    // A physical D-pad takes priority; otherwise use left stick, then right.
+    if (!state->dpad_up && !state->dpad_down && !state->dpad_left && !state->dpad_right) {
+        if (!stick_directions(state, state->left_stick_x, state->left_stick_y)) {
+            stick_directions(state, state->right_stick_x, state->right_stick_y);
+        }
+    }
 #endif
 }
 

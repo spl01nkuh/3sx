@@ -86,8 +86,48 @@ jobs:
             -lm -o /tmp/test-ios-options
           /tmp/test-ios-options
 
+      - name: Test controller input through game conversion
+        run: |
+          cmake -S tools/tests/controller -B build/controller-host -G Ninja \
+            -DSDL3_SOURCE_DIR="$PWD/build/ios-${{ matrix.sdk }}/_deps/threesx_sdl-src" \
+            -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build/controller-host --parallel 4
+          ctest --test-dir build/controller-host --output-on-failure
+
+      - name: Test touch layout geometry
+        run: |
+          cc -std=c2x -DCRS_PLATFORM_IOS=1 -Isrc \
+            -Ibuild/ios-${{ matrix.sdk }}/_deps/threesx_sdl-src/include \
+            tools/tests/test-ios-layout.c src/platform/input/ios/ios_layout.c \
+            -lm -o /tmp/test-ios-layout
+          /tmp/test-ios-layout
+
       - name: Compile iOS CRT Metal shader
         run: xcrun --sdk iphoneos metal -x metal -c src/platform/video/sdl_gpu/shaders/compiled/msl/ios_crt.frag -o /tmp/ios-crt.air
+
+      - name: Render CRT reference images on Metal
+        if: matrix.sdk == 'simulator'
+        shell: bash
+        run: |
+          clang -O2 -fobjc-arc -framework Metal -framework Foundation \
+            tools/tests/test-ios-crt-metal.m -o /tmp/test-ios-crt-metal
+          set +e
+          /tmp/test-ios-crt-metal src/platform/video/sdl_gpu/shaders/compiled/msl/ios_crt.frag build/ios-crt-visuals
+          result=$?
+          set -e
+          if [ "$result" -eq 77 ]; then
+            echo "Metal image rendering skipped: this runner has no Metal device. Shader compilation remains required."
+          elif [ "$result" -ne 0 ]; then
+            exit "$result"
+          fi
+
+      - name: Upload CRT reference results
+        if: always() && matrix.sdk == 'simulator'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-crt-reference-results
+          path: build/ios-crt-visuals
+          if-no-files-found: warn
 
       - name: Verify Apple bundle recognition with preloaded data
         run: swift tools/tests/test-ios-bundle.swift build/ios-${{ matrix.sdk }}/Release-${{ matrix.sdk == 'device' && 'iphoneos' || 'iphonesimulator' }}/3SX.app

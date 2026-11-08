@@ -91,6 +91,10 @@ if [[ "$SDK" == device && "$SIGN" == OFF ]]; then
 3. Open 3SX, tap Import SF33RD.AFS, and select it.
 
 Tap the gear in the top right for iOS options. Settings save automatically.
+The gear hides after five idle seconds; touch the screen to reveal it.
+Choose Hybrid, Stick or D-pad, or open Edit controls & custom buttons.
+Drag controls to move them; tap for size/position; Add creates button chords.
+Display settings include independent width/height stretching and CRT filters.
 Update the existing app using the same signing account to retain game data.
 
 Optional PERSONAL icon (the public app contains no personal icon):
