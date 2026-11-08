@@ -6,7 +6,7 @@ The build can run on a hosted macOS GitHub Actions runner, so you do not need to
 
 ## Recommended phone setup
 
-The next update is version **0.3.0 build 4**. Its download link will be added here after the hosted iPhone build passes. The previous [0.2.0 iPhone build ZIP](https://github.com/spl01nkuh/3sx/actions/runs/42341591104/artifacts/13562491090) remains available while the update builds.
+[Download the 0.3.0 iPhone build ZIP](https://github.com/spl01nkuh/3sx/actions/runs/42440558011/artifacts/13601309257). Both iPhone and simulator builds passed, including the native menus, controller-to-game input regression, touch styles/layout geometry, display sizing, and Apple bundle recognition. All six filters also passed actual offscreen Metal rendering on Apple's paravirtual GPU. Hands-on device validation of the new features remains outstanding.
 
 1. Download and extract the device build artifact. It contains `3SX-unsigned.ipa` and `INSTALL.txt`.
 2. Sign and install the IPA with iLoader or your usual sideloading app.
@@ -90,9 +90,7 @@ If you downloaded this port from the `ios-port` branch of a fork, pushes to that
 3. Select **Build (iOS)**, choose **Run workflow**, and select the branch containing the port.
 4. Open the completed run. Under **Artifacts**, download **3SX-iOS-device-unsigned** and extract its ZIP to get `3SX-unsigned.ipa`.
 
-The workflow uses a hosted macOS runner and builds the dependencies automatically. It also creates a **3SX-iOS-simulator** artifact for Mac-based simulator testing; use the device IPA for sideloading onto your phone or tablet. If the build fails, the run's logs and `ios-device-build-log` artifact contain the compiler error to investigate. Both Release jobs passed in [this verified build](https://github.com/spl01nkuh/3sx/actions/runs/42334103610).
-
-For the corrected 0.1.1 build, [download the device artifact ZIP](https://github.com/spl01nkuh/3sx/actions/runs/42338032772/artifacts/13560114086) while signed in to GitHub. Extract it to obtain `3SX-unsigned.ipa`. The IPA was checked for ZIP integrity, an arm64 iPhone executable, iOS 15.0 minimum, and the packaged Metal shaders and assets. It contains no AFS archive; use the local helper below to add yours before signing, or import it after installation.
+The workflow uses a hosted macOS runner and builds the dependencies automatically. It also creates a **3SX-iOS-simulator** artifact for Mac-based simulator testing; use the device IPA for sideloading onto your phone or tablet. If the build fails, the run's logs and `ios-device-build-log` artifact contain the compiler error to investigate. The recommended download above points to the latest verified device build.
 
 If starting with a new repository, create an empty one on GitHub without adding a README. Install Git on your computer, open a terminal in the extracted source folder, and run these commands, replacing the repository URL with your own:
 
@@ -182,7 +180,7 @@ Open the generated project, select the `3sx` scheme and your connected device, t
 - Metal rendering, native AFS import, sandbox paths, on-screen controls, and background/foreground handling are included in the prototype.
 - Netplay, replay statcheck, and the desktop debug UI are excluded from the initial iOS target.
 - The iOS menu adjusts stick response, screen geometry, filters and touch layout. Button remapping remains in the game's own options; custom buttons can hold several mapped buttons together.
-- Previous hosted Xcode Release builds for iPhone and simulator pass, including UIKit and CommonCrypto compilation and Apple bundle recognition. Version 0.3.0 adds regression tests through the real controller-to-game input path, portable layout and display tests, and a native Metal image test that explicitly reports when no GPU is available.
+- Hosted Xcode Release builds for iPhone and simulator pass, including UIKit and CommonCrypto compilation and Apple bundle recognition. Version 0.3.0 passed regression tests through the real controller-to-game input path, portable layout and display tests, and actual Metal image rendering for every filter at multiple strengths. The rendering test reports an explicit skip if a future runner has no GPU; this verified run did have one.
 - The user confirmed signed installation and gameplay with touch and Xbox input on the previous build. The new editor, control styles, manual stretching and filters still need physical-device feedback. Frame-rate measurements remain outstanding.
 
 Additional Linux host checks passed with GCC and Clang for C syntax in Release and Debug, portable touch direction/chord/controller merging, malformed AFS headers, bundle resource selection, build-script syntax, plist parsing, and CMake configuration logic. Host C checks use `CHECKSUM=0`; the hosted Xcode builds validate the Apple-specific compilation. The source is based on upstream commit `6187364`.
@@ -194,3 +192,5 @@ Bundled data in version 0.1.1 uses `game-data`, avoiding Apple's reserved bundle
 The corrected iPhone build passed the Apple Foundation bundle-recognition check with preloaded data present in [run 42338032772](https://github.com/spl01nkuh/3sx/actions/runs/42338032772). Phone-side AFS import is the recommended setup and has been confirmed working by the user.
 
 Version 0.2.0 build 3 was verified in [run 42341591104](https://github.com/spl01nkuh/3sx/actions/runs/42341591104). The public ZIP was inspected to confirm that it contains the generic local-only personalization helper and no personal icon or AFS.
+
+Version **0.3.0 build 4**, source commit `9a8b34fa0bb6fd0f1177ddccd8f7fbc20fbbcc9a`, was verified in [run 42440558011](https://github.com/spl01nkuh/3sx/actions/runs/42440558011). The downloaded IPA passed ZIP integrity, arm64/iPhoneOS metadata, version, and production-shader checks. It contains no AFS archive or private app icon. The ZIP includes only the IPA, generic local personalization helper, and installation instructions. [Actual Metal comparison images and metrics](https://github.com/spl01nkuh/3sx/actions/runs/42440558011/artifacts/13601268768) are available separately; these use an original synthetic fixture, with no game assets.
