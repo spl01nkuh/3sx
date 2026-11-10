@@ -6,7 +6,7 @@ The build can run on a hosted macOS GitHub Actions runner, so you do not need to
 
 ## Recommended phone setup
 
-Version **0.4.0 build 5** is being verified. Its download link will be added after the hosted builds pass. The previous [0.3.0 iPhone build ZIP](https://github.com/spl01nkuh/3sx/actions/runs/42440558011/artifacts/13601309257) remains available in the meantime.
+[Download the 0.4.0 iPhone build ZIP](https://github.com/spl01nkuh/3sx/actions/runs/42730771313/artifacts/13725121246). Both iPhone and simulator builds passed, including native preview/tester/editor compilation, controller/touch sensitivity and motion input through the game pipeline, and Apple bundle recognition. All nine effects passed actual offscreen Metal rendering. Hands-on device validation of the new interface and individual controller mappings remains outstanding.
 
 1. Download and extract the device build artifact. It contains `3SX-unsigned.ipa` and `INSTALL.txt`.
 2. Sign and install the IPA with iLoader or your usual sideloading app.
@@ -31,6 +31,8 @@ Tap the small gear in the top-right safe area. It hides after five seconds witho
 All 28 Carlos presets and eight GLSL sources remain in `third_party_sources/carlos-crt/`, with attribution. Pinned original Lottes, zfast, Caligari, Aperture, Geom and Hyllian sources and licenses are in `third_party_sources/libretro-crt/`. The menu provides nine single-pass Metal adaptations plus Off: crisp scaling, flat scanlines, curved Gaussian beams, phosphor dots, slot mask, YIQ color bleed/noise, Aperture glow, Geom glass curvature/corners, and sharp Hyllian reconstruction. Multi-pass and feedback presets requiring additional libretro dependencies remain retained as source for future integration. A shader initialization failure is shown in the filter menu instead of silently pretending filters work.
 
 The in-menu preview copies the last rendered game canvas and uses the same production fragment shader as gameplay. It does not advance the game or play shortcut sequences. The picture remains frozen while animated filter noise and settings can change. Preview appearance and performance at its smaller resolution can differ from full-screen output.
+
+To check a controller whose response appears unchanged, open **Test stick sensitivity**, hold its stick partway out, and compare 1% with 100%. The raw axis values should stay the same while the tuned response and activated direction change. If raw values stay at zero, the controller name and axis availability show whether an analog stick is being received. The touch-stick bypass is fixed in 0.4.0; physical controllers pass both legacy-analog input tests, but individual controller mappings still need hardware confirmation.
 
 ## Touch layout and custom buttons
 
@@ -210,3 +212,5 @@ The corrected iPhone build passed the Apple Foundation bundle-recognition check 
 Version 0.2.0 build 3 was verified in [run 42341591104](https://github.com/spl01nkuh/3sx/actions/runs/42341591104). The public ZIP was inspected to confirm that it contains the generic local-only personalization helper and no personal icon or AFS.
 
 Version **0.3.0 build 4**, source commit `9a8b34fa0bb6fd0f1177ddccd8f7fbc20fbbcc9a`, was verified in [run 42440558011](https://github.com/spl01nkuh/3sx/actions/runs/42440558011). The downloaded IPA passed ZIP integrity, arm64/iPhoneOS metadata, version, and production-shader checks. It contains no AFS archive or private app icon. The ZIP includes only the IPA, generic local personalization helper, and installation instructions. [Actual Metal comparison images and metrics](https://github.com/spl01nkuh/3sx/actions/runs/42440558011/artifacts/13601268768) are available separately; these use an original synthetic fixture, with no game assets.
+
+Version **0.4.0 build 5**, source commit `55f2699172fc0198184d0426c2e6bd1ef39e78a9`, passed both Apple jobs in [run 42730771313](https://github.com/spl01nkuh/3sx/actions/runs/42730771313). The downloaded IPA passed ZIP integrity, bundle/version/arm64 metadata, native-feature class, and packaged-shader checks. The public ZIP contains the IPA, generic local icon helper and instructions, with no AFS or private icon. [Actual Metal images, metrics and filter manifests](https://github.com/spl01nkuh/3sx/actions/runs/42730771313/artifacts/13724741882) cover nine effects at multiple strengths; every pair differs and strength zero matches Off exactly. Portable tests, real input-pipeline sensitivity/motion tests, and 700 C translation units checked with Clang in Release and Debug also passed. These checks verify emitted input sequences; recognizing a specific character's special move and the live menu's appearance still need device testing with game data.
