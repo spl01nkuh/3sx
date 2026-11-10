@@ -1,5 +1,6 @@
 #include "platform/app/ios/ios_options.h"
 #include <assert.h>
+#include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -85,8 +86,37 @@ static void test_viewport_controls(void) {
     expect_viewport((SDL_Rect) { 7, 9, -1, 20 }, (SDL_Rect) { 7, 9, 0, 0 });
 }
 
+static void test_touch_stick_response(void) {
+    IOSOptions options = IOSOptions_Defaults();
+    for (int sensitivity = 1; sensitivity <= 100; ++sensitivity) {
+        options.stick_sensitivity = sensitivity;
+        IOSOptions_Apply(options);
+        float x = 0.2f, y = 0.0f;
+        IOSOptions_AdjustTouchStick(&x, &y);
+        if (sensitivity == 1 || sensitivity == 50) assert(x < 0.25f && y == 0.0f);
+        if (sensitivity == 100) assert(x > 0.25f && y == 0.0f);
+        x = 1.0f; y = 0.0f;
+        IOSOptions_AdjustTouchStick(&x, &y);
+        assert(x == 1.0f && y == 0.0f);
+        x = 0.0f; y = -1.0f;
+        IOSOptions_AdjustTouchStick(&x, &y);
+        assert(x == 0.0f && y == -1.0f);
+    }
+
+    options.stick_sensitivity = 100;
+    options.stick_deadzone = 35;
+    IOSOptions_Apply(options);
+    float x = 0.2f, y = -0.2f;
+    IOSOptions_AdjustTouchStick(&x, &y);
+    assert(x == 0.0f && y == 0.0f);
+    x = NAN; y = 0.1f;
+    IOSOptions_AdjustTouchStick(&x, &y);
+    assert(x == 0.0f && y == 0.0f);
+}
+
 int main(void) {
     test_viewport_controls();
+    test_touch_stick_response();
     IOSOptions options = IOSOptions_Defaults();
     assert(options.stick_sensitivity == 50 && options.filter_strength == 75);
     IOSOptions_Apply(options);

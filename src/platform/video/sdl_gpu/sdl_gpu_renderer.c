@@ -5,6 +5,7 @@
 #include "port/config/config.h"
 #if CRS_PLATFORM_IOS
 #include "platform/app/ios/ios_options.h"
+#include "platform/app/ios/ios_filter_frame.h"
 #endif
 #include "port/utils.h"
 #include "sf33rd/AcrSDK/ps2/flps2etc.h"
@@ -113,7 +114,8 @@ static_assert(offsetof(IOSCRTUniforms, source_width) == 16, "Metal source block 
 static_assert(offsetof(IOSCRTUniforms, frame) == 24, "Metal frame value must be at byte 24");
 static_assert(IOS_FILTER_NONE == 0 && IOS_FILTER_SHARP == 1 && IOS_FILTER_ZFAST == 2 &&
     IOS_FILTER_LOTTES == 3 && IOS_FILTER_CALIGARI == 4 && IOS_FILTER_EASYMODE == 5 &&
-    IOS_FILTER_COMPOSITE == 6 && IOS_FILTER_COUNT == 7, "Filter IDs must match the Metal shader catalog");
+    IOS_FILTER_COMPOSITE == 6 && IOS_FILTER_APERTURE == 7 && IOS_FILTER_GEOM == 8 &&
+    IOS_FILTER_HYLLIAN == 9 && IOS_FILTER_COUNT == 10, "Filter IDs must match the Metal shader catalog");
 static char ios_filter_error[512];
 static Uint32 ios_filter_frame;
 
@@ -125,6 +127,58 @@ static SDL_GPUSampler* sampler = NULL;
 static SDL_GPUTexture* canvas_texture = NULL;
 static SDL_GPUTexture* depth_texture = NULL;
 static SDL_GPUTextureFormat depth_texture_format = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
+
+#if CRS_PLATFORM_IOS
+SDL_Surface* IOSFilter_CopyGameFrame(void) {
+    if (device == NULL || canvas_texture == NULL) {
+        SDL_SetError("No rendered game frame is available");
+        return NULL;
+    }
+    const Uint32 row_bytes = CANVAS_WIDTH * 4;
+    SDL_GPUTransferBuffer* transfer = SDL_CreateGPUTransferBuffer(device,
+        &(SDL_GPUTransferBufferCreateInfo) {
+            .usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
+            .size = row_bytes * CANVAS_HEIGHT,
+        });
+    if (transfer == NULL) return NULL;
+    SDL_GPUCommandBuffer* command = SDL_AcquireGPUCommandBuffer(device);
+    if (command == NULL) {
+        SDL_ReleaseGPUTransferBuffer(device, transfer);
+        return NULL;
+    }
+    SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(command);
+    if (copy == NULL) {
+        SDL_CancelGPUCommandBuffer(command);
+        SDL_ReleaseGPUTransferBuffer(device, transfer);
+        return NULL;
+    }
+    SDL_DownloadFromGPUTexture(copy,
+        &(SDL_GPUTextureRegion) { .texture = canvas_texture, .w = CANVAS_WIDTH, .h = CANVAS_HEIGHT, .d = 1 },
+        &(SDL_GPUTextureTransferInfo) { .transfer_buffer = transfer, .pixels_per_row = CANVAS_WIDTH,
+                                       .rows_per_layer = CANVAS_HEIGHT });
+    SDL_EndGPUCopyPass(copy);
+    SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(command);
+    SDL_Surface* surface = NULL;
+    if (fence != NULL) {
+        if (SDL_WaitForGPUFences(device, true, &fence, 1)) {
+            const void* pixels = SDL_MapGPUTransferBuffer(device, transfer, false);
+            if (pixels != NULL) {
+                surface = SDL_CreateSurface(CANVAS_WIDTH, CANVAS_HEIGHT, SDL_PIXELFORMAT_RGBA32);
+                if (surface != NULL) {
+                    for (int y = 0; y < CANVAS_HEIGHT; ++y) {
+                        SDL_memcpy((Uint8*)surface->pixels + y * surface->pitch,
+                            (const Uint8*)pixels + y * row_bytes, row_bytes);
+                    }
+                }
+                SDL_UnmapGPUTransferBuffer(device, transfer);
+            }
+        }
+        SDL_ReleaseGPUFence(device, fence);
+    }
+    SDL_ReleaseGPUTransferBuffer(device, transfer);
+    return surface;
+}
+#endif
 
 static SDL_GPUBuffer* vertex_buffer = NULL;
 static SDL_GPUTransferBuffer* vertex_transfer_buffer = NULL;

@@ -95,6 +95,9 @@ The gear hides after five idle seconds; touch the screen to reveal it.
 Choose Hybrid, Stick or D-pad, or open Edit controls & custom buttons.
 Drag controls to move them; tap for size/position; Add creates button chords.
 Display settings include independent width/height stretching and CRT filters.
+The Filter menu previews the paused game and lets you compare with Original.
+Sticks > Test stick sensitivity shows controller and touch activation live.
+Control Size accepts an exact percentage; custom buttons can play motions.
 Update the existing app using the same signing account to retain game data.
 
 Optional PERSONAL icon (the public app contains no personal icon):

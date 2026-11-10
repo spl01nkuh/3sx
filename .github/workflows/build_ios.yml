@@ -51,6 +51,8 @@ jobs:
         with:
           path: build/ios-${{ matrix.sdk }}
           key: ios-${{ github.repository }}-${{ runner.os }}-${{ runner.arch }}-${{ matrix.sdk }}-${{ steps.toolchain.outputs.cache_id }}-${{ hashFiles('cmake/ios.cmake', 'tools/build-ios.sh') }}
+          restore-keys: |
+            ios-${{ github.repository }}-${{ runner.os }}-${{ runner.arch }}-${{ matrix.sdk }}-${{ steps.toolchain.outputs.cache_id }}-
 
       - name: Build native iOS app
         run: |
@@ -101,6 +103,14 @@ jobs:
             tools/tests/test-ios-layout.c src/platform/input/ios/ios_layout.c \
             -lm -o /tmp/test-ios-layout
           /tmp/test-ios-layout
+
+      - name: Test frame-based motion shortcuts
+        run: |
+          cc -std=c2x -DCRS_PLATFORM_IOS=1 -Isrc \
+            -Ibuild/ios-${{ matrix.sdk }}/_deps/threesx_sdl-src/include \
+            tools/tests/test-ios-motion.c src/platform/input/ios/ios_motion.c \
+            -o /tmp/test-ios-motion
+          /tmp/test-ios-motion
 
       - name: Compile iOS CRT Metal shader
         run: xcrun --sdk iphoneos metal -x metal -c src/platform/video/sdl_gpu/shaders/compiled/msl/ios_crt.frag -o /tmp/ios-crt.air

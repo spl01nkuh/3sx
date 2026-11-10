@@ -26,7 +26,8 @@ void IOSOptions_Apply(IOSOptions options) {
 const char* IOSOptions_FilterName(int filter) {
     static const char* names[] = {
         "Off", "Sharp Bilinear", "CRT zfast", "CRT Lottes",
-        "CRT Caligari", "CRT EasyMode", "Composite TV"
+        "CRT Caligari", "CRT EasyMode", "Composite TV",
+        "CRT Aperture", "CRT Geom", "CRT Hyllian"
     };
     return names[SDL_clamp(filter, 0, IOS_FILTER_COUNT - 1)];
 }
@@ -51,18 +52,22 @@ SDL_Rect IOSOptions_Viewport(SDL_Rect available) {
     return result;
 }
 
-void IOSOptions_AdjustStick(Sint16* x, Sint16* y) {
-    const float fx = (float)*x / (*x < 0 ? 32768.0f : 32767.0f);
-    const float fy = (float)*y / (*y < 0 ? 32768.0f : 32767.0f);
+static void adjust_normalized_stick(float* x, float* y) {
+    const float fx = *x;
+    const float fy = *y;
+    if (!isfinite(fx) || !isfinite(fy)) {
+        *x = *y = 0.0f;
+        return;
+    }
     const float magnitude = sqrtf(fx * fx + fy * fy);
     const float deadzone = (float)current.stick_deadzone / 100.0f;
     if (magnitude <= deadzone) {
-        *x = *y = 0;
+        *x = *y = 0.0f;
         return;
     }
-    // The game consumes digital directions, not movement speed. Map the chosen
-    // throw threshold onto 50% output, where the pad driver activates a direction.
-    // 1% needs 90% throw; 100% needs 10%. Keep full throw available at either end.
+    // Physical directions activate at 50% output: 1% sensitivity needs 90%
+    // throw; 100% needs 10%. Touch's 25% output threshold preserves its smaller
+    // activation radius. Both share the curve and retain full deflection.
     const float sensitivity = (float)(current.stick_sensitivity - 1) / 99.0f;
     const float threshold = 0.9f - 0.8f * sensitivity;
     const float normalized = SDL_clamp((magnitude - deadzone) / (1.0f - deadzone), 0.0f, 1.0f);
@@ -70,8 +75,20 @@ void IOSOptions_AdjustStick(Sint16* x, Sint16* y) {
         ? 0.5f * normalized / threshold
         : 0.5f + 0.5f * (normalized - threshold) / (1.0f - threshold);
     const float scale = response / magnitude;
-    const int rx = (int)roundf(SDL_clamp(fx * scale, -1.0f, 1.0f) * 32768.0f);
-    const int ry = (int)roundf(SDL_clamp(fy * scale, -1.0f, 1.0f) * 32768.0f);
+    *x = SDL_clamp(fx * scale, -1.0f, 1.0f);
+    *y = SDL_clamp(fy * scale, -1.0f, 1.0f);
+}
+
+void IOSOptions_AdjustTouchStick(float* x, float* y) {
+    adjust_normalized_stick(x, y);
+}
+
+void IOSOptions_AdjustStick(Sint16* x, Sint16* y) {
+    float fx = (float)*x / (*x < 0 ? 32768.0f : 32767.0f);
+    float fy = (float)*y / (*y < 0 ? 32768.0f : 32767.0f);
+    adjust_normalized_stick(&fx, &fy);
+    const int rx = (int)roundf(fx * 32768.0f);
+    const int ry = (int)roundf(fy * 32768.0f);
     *x = (Sint16)SDL_clamp(rx, -32768, 32767);
     *y = (Sint16)SDL_clamp(ry, -32768, 32767);
 }

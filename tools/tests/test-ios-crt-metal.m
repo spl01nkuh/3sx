@@ -26,12 +26,17 @@ _Static_assert(offsetof(CRTTestOptions, source) == 16, "MSL float4 source offset
 
 static const char* filterNames[] = {
     "Off", "Sharp Bilinear", "Zfast CRT", "Lottes Arcade",
-    "Caligari Phosphor", "Carlos EasyMode", "Composite"
+    "Caligari Phosphor", "Carlos EasyMode", "Composite",
+    "CRT Aperture", "CRT Geom", "CRT Hyllian"
 };
 static const char* fileNames[] = {
     "00-off.ppm", "01-sharp-bilinear.ppm", "02-zfast-crt.ppm", "03-lottes-arcade.ppm",
-    "04-caligari-phosphor.ppm", "05-carlos-easymode.ppm", "06-composite.ppm"
+    "04-caligari-phosphor.ppm", "05-carlos-easymode.ppm", "06-composite.ppm",
+    "07-crt-aperture.ppm", "08-crt-geom.ppm", "09-crt-hyllian.ppm"
 };
+static const NSUInteger filterCount = sizeof(filterNames) / sizeof(filterNames[0]);
+_Static_assert(sizeof(fileNames) / sizeof(fileNames[0]) == sizeof(filterNames) / sizeof(filterNames[0]),
+    "Every CRT filter must have a corresponding artifact filename");
 
 // Original synthetic fixture: color bars, single-pixel detail, ramps, diagonals,
 // and two block characters on an arena-like background. No game assets needed.
@@ -268,6 +273,29 @@ static BOOL writeContactSheet(NSString* path, NSArray<NSData*>* images) {
     }
     return writePPM(path, sheet, width, height);
 }
+static BOOL writeManifest(NSString* output) {
+    NSMutableString* tsv = [NSMutableString stringWithString:@"id\tname\tfile_strength_50\tfile_strength_75\twidth\theight\n"];
+    NSMutableArray<NSDictionary*>* filters = [NSMutableArray arrayWithCapacity:filterCount];
+    for (NSUInteger index = 0; index < filterCount; index++) {
+        NSString* name = [NSString stringWithUTF8String:filterNames[index]];
+        NSString* file75 = [NSString stringWithUTF8String:fileNames[index]];
+        NSString* file50 = [@"strength-50" stringByAppendingPathComponent:file75];
+        [tsv appendFormat:@"%lu\t%@\t%@\t%@\t%lu\t%lu\n", (unsigned long)index,
+            name, file50, file75, (unsigned long)outputWidth, (unsigned long)outputHeight];
+        [filters addObject:@{ @"id": @(index), @"name": name,
+            @"file_strength_50": file50, @"file_strength_75": file75 }];
+    }
+    NSError* error = nil;
+    if (![tsv writeToFile:[output stringByAppendingPathComponent:@"manifest.tsv"] atomically:YES encoding:NSUTF8StringEncoding error:&error]) {
+        fprintf(stderr, "FAIL: TSV manifest write: %s\n", error.description.UTF8String); return NO;
+    }
+    NSDictionary* manifest = @{ @"schema_version": @1, @"width": @(outputWidth), @"height": @(outputHeight), @"filters": filters };
+    NSData* json = [NSJSONSerialization dataWithJSONObject:manifest options:NSJSONWritingPrettyPrinted | NSJSONWritingSortedKeys error:&error];
+    if (!json || ![json writeToFile:[output stringByAppendingPathComponent:@"manifest.json"] options:NSDataWritingAtomic error:&error]) {
+        fprintf(stderr, "FAIL: JSON manifest write: %s\n", error.description.UTF8String); return NO;
+    }
+    return YES;
+}
 
 int main(int argc, const char* argv[]) {
     @autoreleasepool {
@@ -296,13 +324,24 @@ int main(int argc, const char* argv[]) {
         NSMutableArray<NSData*>* images50 = [NSMutableArray arrayWithObject:rgbImage(off)];
         NSMutableString* metrics = [NSMutableString stringWithString:@"filter\tmean_absolute_difference_25\tmean_absolute_difference_50\tmean_absolute_difference_75\tmean_absolute_difference_100\n"];
         BOOL passed = YES;
-        for (int preset = 1; preset < 7; preset++) {
+        const float offStrengths[] = { 0, 0.25f, 0.50f, 1.0f };
+        double offDifferences[sizeof(offStrengths) / sizeof(offStrengths[0])] = {0};
+        for (NSUInteger index = 0; index < sizeof(offStrengths) / sizeof(offStrengths[0]); index++) {
+            NSData* offAtStrength = [harness renderPreset:0 strength:offStrengths[index]];
+            if (!validImage(offAtStrength, "Off")) return 1;
+            offDifferences[index] = difference(off, offAtStrength);
+            if (offDifferences[index] > 0.000001) {
+                fprintf(stderr, "FAIL: Off changes with strength %.2f\n", offStrengths[index]); passed = NO;
+            }
+        }
+        [metrics appendFormat:@"Off\t%.8f\t%.8f\t0.00000000\t%.8f\n", offDifferences[1], offDifferences[2], offDifferences[3]];
+        for (NSUInteger preset = 1; preset < filterCount; preset++) {
             @autoreleasepool {
-                NSData* zero = [harness renderPreset:preset strength:0];
-                NSData* low = [harness renderPreset:preset strength:0.25f];
-                NSData* middle = [harness renderPreset:preset strength:0.50f];
-                NSData* normal = [harness renderPreset:preset strength:0.75f];
-                NSData* high = [harness renderPreset:preset strength:1.0f];
+                NSData* zero = [harness renderPreset:(int)preset strength:0];
+                NSData* low = [harness renderPreset:(int)preset strength:0.25f];
+                NSData* middle = [harness renderPreset:(int)preset strength:0.50f];
+                NSData* normal = [harness renderPreset:(int)preset strength:0.75f];
+                NSData* high = [harness renderPreset:(int)preset strength:1.0f];
                 if (!validImage(zero, filterNames[preset]) || !validImage(low, filterNames[preset]) ||
                     !validImage(middle, filterNames[preset]) || !validImage(normal, filterNames[preset]) ||
                     !validImage(high, filterNames[preset])) return 1;
@@ -340,6 +379,7 @@ int main(int argc, const char* argv[]) {
         if (![metrics writeToFile:[output stringByAppendingPathComponent:@"metrics.tsv"] atomically:YES encoding:NSUTF8StringEncoding error:&error]) {
             fprintf(stderr, "FAIL: metrics write: %s\n", error.description.UTF8String); return 1;
         }
+        if (!writeManifest(output)) return 1;
         printf("%s: actual Metal fragment rendering; output %s\n", passed ? "PASS" : "FAIL", output.fileSystemRepresentation);
         return passed ? 0 : 1;
     }

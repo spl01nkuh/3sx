@@ -581,6 +581,9 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             frame_deadline = now;
         }
         frame_deadline += target_frame_time_ns;
+        // Advance shortcut sequences once per simulated game frame. Input
+        // getters can be polled repeatedly without shortening a motion.
+        IOSTouch_AdvanceFrame();
 #endif
         begin_frame();
         Main_StepFrame();

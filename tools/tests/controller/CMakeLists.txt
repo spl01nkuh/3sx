@@ -26,11 +26,11 @@ set(SDL_HIDAPI ON CACHE BOOL "" FORCE)
 set(SDL_HIDAPI_JOYSTICK OFF CACHE BOOL "" FORCE)
 set(SDL_UNIX_CONSOLE_BUILD ON CACHE BOOL "" FORCE)
 add_subdirectory("${SDL3_SOURCE_DIR}" sdl EXCLUDE_FROM_ALL)
-add_executable(test-ios-controller
-    ../test-ios-controller.c
+set(CONTROLLER_PIPELINE_SOURCES
     "${THREESX_ROOT}/src/core/input.c"
     "${THREESX_ROOT}/src/platform/input/sdl/sdl_pad.c"
     "${THREESX_ROOT}/src/platform/input/ios/ios_touch_state.c"
+    "${THREESX_ROOT}/src/platform/input/ios/ios_layout.c"
     "${THREESX_ROOT}/src/platform/app/ios/ios_options.c"
     "${THREESX_ROOT}/src/port/config/keymap.c"
     "${THREESX_ROOT}/src/port/sdk/sdk_libpad2.c"
@@ -41,15 +41,21 @@ add_executable(test-ios-controller
     "${THREESX_ROOT}/src/sf33rd/Source/Game/system/work_sys.c"
     "${THREESX_ROOT}/src/sf33rd/Source/Game/engine/workuser.c"
 )
-target_include_directories(test-ios-controller PRIVATE "${THREESX_ROOT}/src" "${THREESX_ROOT}/src/sdk")
-target_compile_definitions(test-ios-controller PRIVATE CRS_PLATFORM_IOS=1 CRS_INPUT_DRIVER_SDL=1)
-target_compile_options(test-ios-controller PRIVATE -UNDEBUG -ffunction-sections -fdata-sections)
-if(APPLE)
-    target_link_options(test-ios-controller PRIVATE -Wl,-dead_strip)
-else()
-    target_link_options(test-ios-controller PRIVATE -Wl,--gc-sections)
-    target_link_libraries(test-ios-controller PRIVATE m)
-endif()
-target_link_libraries(test-ios-controller PRIVATE SDL3::SDL3-static)
+add_executable(test-ios-controller ../test-ios-controller.c ${CONTROLLER_PIPELINE_SOURCES})
+add_executable(test-ios-motion-controller ../test-ios-motion-controller.c
+    "${THREESX_ROOT}/src/platform/input/ios/ios_motion.c" ${CONTROLLER_PIPELINE_SOURCES})
+foreach(test_target IN ITEMS test-ios-controller test-ios-motion-controller)
+    target_include_directories(${test_target} PRIVATE "${THREESX_ROOT}/src" "${THREESX_ROOT}/src/sdk")
+    target_compile_definitions(${test_target} PRIVATE CRS_PLATFORM_IOS=1 CRS_INPUT_DRIVER_SDL=1)
+    target_compile_options(${test_target} PRIVATE -UNDEBUG -ffunction-sections -fdata-sections)
+    if(APPLE)
+        target_link_options(${test_target} PRIVATE -Wl,-dead_strip)
+    else()
+        target_link_options(${test_target} PRIVATE -Wl,--gc-sections)
+        target_link_libraries(${test_target} PRIVATE m)
+    endif()
+    target_link_libraries(${test_target} PRIVATE SDL3::SDL3-static)
+endforeach()
 enable_testing()
 add_test(NAME ios-controller-game-directions COMMAND test-ios-controller)
+add_test(NAME ios-motion-game-input COMMAND test-ios-motion-controller)

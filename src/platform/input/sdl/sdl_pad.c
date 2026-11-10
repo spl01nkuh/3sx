@@ -216,9 +216,7 @@ static bool stick_directions(Input_ButtonState* state, Sint16 x, Sint16 y) {
 }
 #endif
 
-static void get_gamepad_state(int id, Input_ButtonState* state) {
-    SDL_Gamepad* pad = input_sources[id].gamepad.gamepad;
-
+static void read_gamepad_state(SDL_Gamepad* pad, Input_ButtonState* state) {
     state->dpad_up = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_UP);
     state->dpad_left = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_LEFT);
     state->dpad_down = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
@@ -240,7 +238,10 @@ static void get_gamepad_state(int id, Input_ButtonState* state) {
     state->left_stick_y = SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFTY);
     state->right_stick_x = SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_RIGHTX);
     state->right_stick_y = SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_RIGHTY);
+}
+
 #if CRS_PLATFORM_IOS
+static void tune_gamepad_state(Input_ButtonState* state) {
     IOSOptions_AdjustStick(&state->left_stick_x, &state->left_stick_y);
     IOSOptions_AdjustStick(&state->right_stick_x, &state->right_stick_y);
     // The PS2 game's saved Analog Stick option can discard analog axes. Send
@@ -251,8 +252,33 @@ static void get_gamepad_state(int id, Input_ButtonState* state) {
             stick_directions(state, state->right_stick_x, state->right_stick_y);
         }
     }
+}
+#endif
+
+static void get_gamepad_state(int id, Input_ButtonState* state) {
+    read_gamepad_state(input_sources[id].gamepad.gamepad, state);
+#if CRS_PLATFORM_IOS
+    tune_gamepad_state(state);
 #endif
 }
+
+#if CRS_PLATFORM_IOS
+bool SDLPad_GetStickPreview(int id, SDLPad_StickPreview* preview) {
+    if (preview == NULL) return false;
+    SDL_zerop(preview);
+    if (id < 0 || id >= INPUT_SOURCES_MAX || input_sources[id].type != SDLPAD_INPUT_GAMEPAD) return false;
+
+    SDL_UpdateGamepads();
+    SDL_Gamepad* pad = input_sources[id].gamepad.gamepad;
+    preview->name = SDL_GetGamepadName(pad);
+    preview->has_left_stick = SDL_GamepadHasAxis(pad, SDL_GAMEPAD_AXIS_LEFTX) && SDL_GamepadHasAxis(pad, SDL_GAMEPAD_AXIS_LEFTY);
+    preview->has_right_stick = SDL_GamepadHasAxis(pad, SDL_GAMEPAD_AXIS_RIGHTX) && SDL_GamepadHasAxis(pad, SDL_GAMEPAD_AXIS_RIGHTY);
+    read_gamepad_state(pad, &preview->raw);
+    preview->tuned = preview->raw;
+    tune_gamepad_state(&preview->tuned);
+    return true;
+}
+#endif
 
 static void cleanup_state(Input_ButtonState* state) {
     if (state->dpad_up && state->dpad_down) {

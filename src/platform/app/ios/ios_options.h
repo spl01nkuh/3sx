@@ -5,7 +5,8 @@
 
 typedef enum IOSFilter {
     IOS_FILTER_NONE, IOS_FILTER_SHARP, IOS_FILTER_ZFAST, IOS_FILTER_LOTTES,
-    IOS_FILTER_CALIGARI, IOS_FILTER_EASYMODE, IOS_FILTER_COMPOSITE, IOS_FILTER_COUNT
+    IOS_FILTER_CALIGARI, IOS_FILTER_EASYMODE, IOS_FILTER_COMPOSITE,
+    IOS_FILTER_APERTURE, IOS_FILTER_GEOM, IOS_FILTER_HYLLIAN, IOS_FILTER_COUNT
 } IOSFilter;
 typedef enum IOSAspect { IOS_ASPECT_4_3, IOS_ASPECT_NATIVE, IOS_ASPECT_FILL } IOSAspect;
 typedef struct IOSOptions {
@@ -25,12 +26,16 @@ const IOSOptions* IOSOptions_Get(void);
 void IOSOptions_Apply(IOSOptions options);
 SDL_Rect IOSOptions_Viewport(SDL_Rect available);
 void IOSOptions_AdjustStick(Sint16* x, Sint16* y);
+// Apply sensitivity/dead zone to a touch-stick vector relative to its center and
+// radius. Use the result for direction hit testing, keeping raw values for art.
+void IOSOptions_AdjustTouchStick(float* x, float* y);
 const char* IOSOptions_FilterName(int filter);
 // NULL when filters are ready; otherwise a readable initialization failure.
 const char* IOSOptions_FilterError(void);
 
 // UIKit persistence and presentation, called on the SDL main thread.
 void IOSOptions_Load(void);
+void IOSOptions_Save(void);
 void IOSOptions_Present(SDL_Window* window);
 bool IOSOptions_IsOpen(void);
 

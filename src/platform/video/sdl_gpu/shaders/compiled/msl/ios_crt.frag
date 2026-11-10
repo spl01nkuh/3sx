@@ -7,6 +7,10 @@
  * Caligari phosphor spots:
  *   Copyright (C) 2011 caligari; ported by Hyllian, GPL-2.0-or-later.
  * EasyMode slot-mask: EasyMode, modified by Carlos, License: GPL.
+ * CRT Aperture: EasyMode, License: GPL.
+ * CRT Geom: Copyright (C) 2010-2012 cgwg, Themaister and DOLLS, GPL-2.0-or-later.
+ * CRT Hyllian: Copyright (C) 2011-2020 Hyllian, MIT license.
+ * Hyllian's embedded mask layouts: hunterk, public domain.
  *
  * This adaptation is GPL-3.0-or-later. Unmodified upstream sources, their
  * original notices, pinned source links and the GPL text are retained under
@@ -157,6 +161,134 @@ float3 composite(texture2d<float> tex, float2 uv, float2 size, float frame) {
     float beam = 0.84f + 0.16f * cos(2.0f * PI * (uv.y * size.y - 0.5f));
     return yiqToRGB(signal) * beam;
 }
+
+// CRT Aperture: EasyMode's dual-Lanczos reconstruction and 3x3 Gaussian glow.
+float4 lanczos2Weights(float phase) {
+    float4 angle = PI * float4(phase + 1.0f, phase, phase - 1.0f, phase - 2.0f);
+    angle = max(abs(angle), float4(0.00001f));
+    float4 weights = 2.0f * sin(angle) * sin(angle * 0.5f) / (angle * angle);
+    return weights / max(dot(weights, float4(1.0f)), 0.00001f);
+}
+float3 apertureReconstruct(texture2d<float> tex, float2 uv, float2 size, float sharpness) {
+    float2 lattice = size * float2(sharpness, 1.0f);
+    float2 pixel = uv * lattice - float2(0.5f, 0.0f);
+    // Align the progressive canvas row with its beam center. The separate
+    // Gaussian pass supplies glow without an extra half-row sampling shift.
+    float2 center = (floor(pixel) + 0.5f) / lattice;
+    float4 weights = lanczos2Weights(fract(pixel.x));
+    float3 left = pow(max(tex.sample(filtered, center).rgb, 0.0f), float3(2.4f));
+    float3 right = pow(max(tex.sample(filtered, center + float2(1.0f / lattice.x, 0)).rgb, 0.0f), float3(2.4f));
+    return max(left * (weights.x + weights.y) + right * (weights.z + weights.w), 0.0f);
+}
+float3 apertureGlow(texture2d<float> tex, float2 uv, float2 size) {
+    float2 pixel = uv * size;
+    int2 center = int2(floor(pixel));
+    float2 distance = fract(pixel) - 0.5f;
+    float3 color(0.0f);
+    float total = 0.0f;
+    for (int y = -1; y <= 1; ++y) {
+        for (int x = -1; x <= 1; ++x) {
+            float2 offset = (float2(x, y) - distance) / float2(0.65f, 0.55f);
+            float weight = exp2(-dot(offset, offset));
+            color += pow(max(fetchPixel(tex, center + int2(x, y)), 0.0f), float3(2.4f)) * weight;
+            total += weight;
+        }
+    }
+    return color / max(total, 0.00001f);
+}
+float3 aperture(texture2d<float> tex, float2 uv, float2 size, float2 output) {
+    float3 soft = apertureReconstruct(tex, uv, size, 1.0f);
+    float3 sharp = apertureReconstruct(tex, uv, size, 3.0f);
+    float3 color = sqrt(max(soft * sharp, 0.0f));
+    float3 beam = mix(float3(0.5f), float3(1.5f), pow(clamp(soft, 0.0f, 1.0f), float3(0.4f)));
+    float phase = fract(uv.y * size.y);
+    float3 scan = smoothstep(float3(0), float3(1), 1.0f - abs((2.0f * phase - 1.0f) / beam)) / beam;
+    color *= scan;
+    float3 glow = clamp(apertureGlow(tex, uv, size) - color, 0.0f, 1.0f);
+    color += glow * glow * 0.35f;
+    float3 mask = (uint(floor(uv.x * output.x)) & 1u) ? float3(0, 1, 0) : float3(1, 0, 1);
+    color = mix(color, color * mask * 2.0f, 0.40f);
+    color += glow * 0.18f;
+    return pow(max(color * 1.5f, 0.0f), float3(1.0f / 2.4f));
+}
+
+// CRT Geom: untilted spherical ray projection, rather than a polynomial warp.
+// The 384x224 input is progressive; no interlace or previous-frame pass is needed.
+float2 geomWarp(float2 uv) {
+    const float radius = 2.0f, distance = 1.6f;
+    const float2 aspect(1.0f, 0.75f);
+    float2 xy = (uv - 0.5f) * aspect * 0.97284f;
+    float a = dot(xy, xy) + distance * distance;
+    float b = -2.0f * (radius * distance + distance * distance);
+    float c = distance * distance + 2.0f * radius * distance;
+    float intersection = (-b - sqrt(max(b * b - 4.0f * a * c, 0.0f))) / (2.0f * a);
+    float2 point = intersection * xy / radius;
+    float length = metal::length(point);
+    float factor = length > 0.000001f ? radius * asin(min(length, 0.999999f)) / length : radius;
+    return point * factor / aspect + 0.5f;
+}
+float3 lanczosRow(texture2d<float> tex, int2 center, float4 weights, int row) {
+    float3 color(0.0f);
+    for (int x = 0; x < 4; ++x) {
+        color += pow(max(fetchPixel(tex, center + int2(x - 1, row)), 0.0f), float3(2.4f)) * weights[x];
+    }
+    return clamp(color, 0.0f, 1.0f);
+}
+float3 geomBeam(float distance, float3 color) {
+    float3 width = 2.0f + 2.0f * pow(color, float3(4.0f));
+    float3 x = abs(distance) / 0.3f * rsqrt(0.5f * width);
+    return 1.4f * exp(-pow(x, width)) / (0.6f + 0.2f * width);
+}
+float3 geom(texture2d<float> tex, float2 uv, float2 size, float2 output, float2 outputPixel) {
+    if (any(uv < float2(0)) || any(uv > float2(1))) return float3(0);
+    float2 pixel = uv * size - 0.5f;
+    int2 center = int2(floor(pixel));
+    float2 phase = fract(pixel);
+    float4 weights = lanczos2Weights(phase.x);
+    float3 above = lanczosRow(tex, center, weights, 0);
+    float3 below = lanczosRow(tex, center, weights, 1);
+    float step = size.y / max(output.y, 1.0f) / 3.0f;
+    float3 beam0 = (geomBeam(phase.y - step, above) + geomBeam(phase.y, above) + geomBeam(phase.y + step, above)) / 3.0f;
+    float3 beam1 = (geomBeam(1.0f - phase.y - step, below) + geomBeam(1.0f - phase.y, below) +
+                   geomBeam(1.0f - phase.y + step, below)) / 3.0f;
+    float3 color = above * beam0 + below * beam1;
+    float3 mask = (uint(floor(outputPixel.x)) & 1u) ? float3(0.65f, 1, 0.65f) : float3(1, 0.65f, 1);
+    float2 edge = min(uv, 1.0f - uv) * float2(1.0f, 0.75f);
+    float2 rounded = 0.03f - min(edge, float2(0.03f));
+    float corner = clamp((0.03f - metal::length(rounded)) * 1000.0f, 0.0f, 1.0f);
+    return pow(max(color * mask * corner, 0.0f), float3(1.0f / 2.2f));
+}
+
+// Hyllian: Catmull-Rom horizontal reconstruction with explicit anti-ringing,
+// per-channel beam widths and hunterk's public-domain 2x2 delta shadow mask.
+float4 catmullRomWeights(float phase) {
+    float square = phase * phase, cube = square * phase;
+    return float4(-0.5f * cube + square - 0.5f * phase,
+                  1.5f * cube - 2.5f * square + 1.0f,
+                 -1.5f * cube + 2.0f * square + 0.5f * phase,
+                  0.5f * cube - 0.5f * square);
+}
+float3 hyllianRow(texture2d<float> tex, int2 center, float4 weights, int row) {
+    float3 a = pow(max(fetchPixel(tex, center + int2(-1, row)), 0.0f), float3(2.4f));
+    float3 b = pow(max(fetchPixel(tex, center + int2(0, row)), 0.0f), float3(2.4f));
+    float3 c = pow(max(fetchPixel(tex, center + int2(1, row)), 0.0f), float3(2.4f));
+    float3 d = pow(max(fetchPixel(tex, center + int2(2, row)), 0.0f), float3(2.4f));
+    return clamp(a * weights.x + b * weights.y + c * weights.z + d * weights.w, min(b, c), max(b, c));
+}
+float3 hyllian(texture2d<float> tex, float2 uv, float2 size, float2 output) {
+    float2 pixel = uv * size - 0.5f;
+    int2 center = int2(floor(pixel));
+    float2 phase = fract(pixel);
+    float4 weights = catmullRomWeights(phase.x);
+    float3 above = hyllianRow(tex, center, weights, 0);
+    float3 below = hyllianRow(tex, center, weights, 1);
+    float3 beam0 = 2.32f * phase.y / mix(float3(0.86f), float3(1.0f), above);
+    float3 beam1 = 2.32f * (1.0f - phase.y) / mix(float3(0.86f), float3(1.0f), below);
+    float3 color = 1.25f * (above * exp(-beam0 * beam0) + below * exp(-beam1 * beam1));
+    uint2 physical = uint2(floor(uv * output));
+    float3 mask = ((physical.x + physical.y) & 1u) ? float3(0.55f, 1, 0.55f) : float3(1, 0.55f, 1);
+    return pow(max(color * mask, 0.0f), float3(1.0f / 2.2f));
+}
 fragment float4 main0(Input in [[stage_in]], constant Options& options [[buffer(0)]],
                      texture2d<float> tex [[texture(0)]], sampler nearest [[sampler(0)]]) {
     float strength = clamp(options.controls.x, 0.0f, 1.0f);
@@ -164,6 +296,7 @@ fragment float4 main0(Input in [[stage_in]], constant Options& options [[buffer(
     float2 output = max(options.controls.zw, float2(1.0f));
     float2 size = max(options.source.xy, float2(1.0f));
     float2 uv = preset == 3 ? lottesWarp(in.uv, strength) : in.uv;
+    if (preset == 8) uv = mix(in.uv, geomWarp(in.uv), strength);
     float3 original = tex.sample(nearest, uv).rgb;
     if (preset == 0 || strength == 0.0f) return float4(original, 1.0f);
     float3 color = original;
@@ -174,6 +307,9 @@ fragment float4 main0(Input in [[stage_in]], constant Options& options [[buffer(
     case 4: color = caligari(tex, uv, size); break;
     case 5: color = easyMode(tex, uv, size, output); break;
     case 6: color = composite(tex, uv, size, options.source.z); break;
+    case 7: color = aperture(tex, uv, size, output); break;
+    case 8: color = geom(tex, uv, size, output, in.uv * output); break;
+    case 9: color = hyllian(tex, uv, size, output); break;
     default: break;
     }
     return float4(mix(original, clamp(color, 0.0f, 1.0f), strength), 1.0f);

@@ -6,6 +6,7 @@
 #include "platform/input/ios/ios_touch.h"
 #include "platform/input/ios/ios_touch_state.h"
 #include "platform/input/ios/ios_layout.h"
+#include "platform/input/ios/ios_motion.h"
 #include "platform/app/ios/ios_options.h"
 #include <math.h>
 
@@ -34,6 +35,8 @@ static IOSLayout_DirectionStyle direction_style = IOS_LAYOUT_HYBRID;
 @interface ThreeSXTouchItem : NSObject
 @property(nonatomic, copy) NSString* label;
 @property(nonatomic, assign) IOSLayout_Control control;
+@property(nonatomic, assign) IOSMotion_ID motion;
+@property(nonatomic, assign) BOOL mirrorMotion;
 @end
 @implementation ThreeSXTouchItem
 @end
@@ -74,7 +77,8 @@ static void saveLayout(void) {
     for (ThreeSXTouchItem* item in layout_items) {
         IOSLayout_Control c = item.control;
         [values addObject:@{ @"x": @(c.center_x), @"y": @(c.center_y), @"size": @(c.size),
-                             @"label": item.label, @"binding": @(c.binding) }];
+                             @"label": item.label, @"binding": @(c.binding),
+                             @"motion": @(item.motion), @"mirrorMotion": @(item.mirrorMotion) }];
     }
     [NSUserDefaults.standardUserDefaults setObject:@{ @"version": @1, @"items": values, @"directionStyle": @(direction_style) } forKey:layout_key];
 }
@@ -102,15 +106,18 @@ static void loadLayout(CGRect safe) {
     for (NSInteger i = 0; i < count; i++) {
         id value = values[i];
         if (![value isKindOfClass:NSDictionary.class]) continue;
+        IOSMotion_ID savedMotion = (IOSMotion_ID)(int)savedNumber(value, @"motion", IOS_MOTION_NONE, 0, IOS_MOTION_COUNT - 1);
         ThreeSXTouchItem* item;
         if (i < built_in_count) item = layout_items[i];
         else {
             id binding = value[@"binding"];
-            if (![binding isKindOfClass:NSNumber.class] || !([binding unsignedIntValue] & binding_mask)) continue;
+            uint16_t savedBinding = [binding isKindOfClass:NSNumber.class] ? (uint16_t)([binding unsignedIntValue] & binding_mask) : 0;
+            if (!savedBinding && savedMotion == IOS_MOTION_NONE) continue;
+            if (savedMotion != IOS_MOTION_NONE) savedBinding &= ~(IOS_TOUCH_UP | IOS_TOUCH_DOWN | IOS_TOUCH_LEFT | IOS_TOUCH_RIGHT);
             item = [[ThreeSXTouchItem alloc] init];
             item.label = [value[@"label"] isKindOfClass:NSString.class] ? cleanLabel(value[@"label"]) : @"CUSTOM";
             item.control = (IOSLayout_Control){ .center_x = 0.5f, .center_y = 0.5f, .size = 1,
-                .binding = (uint16_t)([binding unsignedIntValue] & binding_mask) };
+                .binding = savedBinding };
             [layout_items addObject:item];
         }
         IOSLayout_Control c = item.control;
@@ -118,6 +125,10 @@ static void loadLayout(CGRect safe) {
         c.center_y = savedNumber(value, @"y", c.center_y, 0, 1);
         c.size = savedNumber(value, @"size", 1, 0.55f, 2.0f);
         item.control = c;
+        if (i >= built_in_count) {
+            item.motion = savedMotion;
+            item.mirrorMotion = savedNumber(value, @"mirrorMotion", 0, 0, 1) != 0;
+        }
     }
 }
 
@@ -170,6 +181,10 @@ static ThreeSXActivityObserver* activity_observer;
 @interface ThreeSXTouchView : UIView {
     NSMapTable<UITouch*, NSValue*>* _points;
     NSHashTable<UITouch*>* _stickContacts;
+    NSHashTable<UITouch*>* _motionContacts;
+    IOSMotion_State _motionState;
+    ThreeSXTouchItem* _motionItem;
+    uint16_t _motionOutput;
     float _stickX, _stickY;
     Input_ButtonState _buttons;
     uint16_t _activeMask;
@@ -182,6 +197,7 @@ static ThreeSXActivityObserver* activity_observer;
 - (void)resetTouches;
 - (Input_ButtonState)buttonState;
 - (void)refreshLayout;
+- (void)advanceFrame;
 @end
 
 @implementation ThreeSXTouchView
@@ -197,6 +213,7 @@ static ThreeSXActivityObserver* activity_observer;
         _dragIndex = NSNotFound;
         _points = [NSMapTable strongToStrongObjectsMapTable];
         _stickContacts = [NSHashTable weakObjectsHashTable];
+        _motionContacts = [NSHashTable weakObjectsHashTable];
     }
     return self;
 }
@@ -235,6 +252,7 @@ static ThreeSXActivityObserver* activity_observer;
     uint16_t controls = 0;
     _stickX = _stickY = 0;
     for (UITouch* touch in _points) {
+        if ([_motionContacts containsObject:touch]) continue;
         CGPoint point = [[_points objectForKey:touch] CGPointValue];
         NSInteger index = direction_style == IOS_LAYOUT_STICK && [_stickContacts containsObject:touch]
             ? 0 : [self indexAtPoint:point];
@@ -245,11 +263,16 @@ static ThreeSXActivityObserver* activity_observer;
             CGFloat radius = CGRectGetWidth(frame) / 2.0;
             float x = (float)((point.x - CGRectGetMidX(frame)) / radius);
             float y = (float)((point.y - CGRectGetMidY(frame)) / radius);
-            controls |= IOSLayout_Directions(direction_style, x, y);
             float length = fmaxf(1, hypotf(x, y));
             _stickX = x / length; _stickY = y / length;
-        } else controls |= item.control.binding;
+            if (direction_style != IOS_LAYOUT_DPAD) IOSOptions_AdjustTouchStick(&x, &y);
+            controls |= IOSLayout_Directions(direction_style, x, y);
+        } else if (item.motion == IOS_MOTION_NONE) controls |= item.control.binding;
     }
+    // The current shortcut owns touch directions, including its neutral gaps.
+    // Ordinary attack contacts remain available throughout the sequence.
+    if (_motionState.active || _motionOutput) controls &= ~(IOS_TOUCH_UP | IOS_TOUCH_DOWN | IOS_TOUCH_LEFT | IOS_TOUCH_RIGHT);
+    controls |= _motionOutput;
     _activeMask = controls;
     _buttons = IOSTouchState_Buttons(controls);
     [self setNeedsDisplay];
@@ -262,9 +285,26 @@ static ThreeSXActivityObserver* activity_observer;
 }
 - (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
     (void)event;
-    if (!self.editing && direction_style == IOS_LAYOUT_STICK) {
+    if (!self.editing && !IOSOptions_IsOpen() && !editor_open) {
+        NSInteger motionIndex = NSNotFound;
+        NSTimeInterval newest = -1;
         for (UITouch* touch in touches) {
-            if ([self indexAtPoint:[touch locationInView:self]] == 0) [_stickContacts addObject:touch];
+            NSInteger index = [self indexAtPoint:[touch locationInView:self]];
+            if (index == NSNotFound) continue;
+            ThreeSXTouchItem* item = layout_items[index];
+            if (item.motion != IOS_MOTION_NONE) {
+                [_motionContacts addObject:touch];
+                if (touch.timestamp > newest || (touch.timestamp == newest && index > motionIndex)) {
+                    newest = touch.timestamp; motionIndex = index;
+                }
+            } else if (index == 0 && direction_style == IOS_LAYOUT_STICK) [_stickContacts addObject:touch];
+        }
+        if (motionIndex != NSNotFound) {
+            // New presses replace the previous shortcut. Timestamp and index
+            // resolve simultaneous presses independently of NSSet iteration.
+            ThreeSXTouchItem* item = layout_items[motionIndex];
+            IOSMotion_Start(&_motionState, item.motion, item.mirrorMotion, item.control.binding);
+            _motionOutput = 0; _motionItem = item;
         }
     }
     [self updateTouches:touches];
@@ -272,15 +312,28 @@ static ThreeSXActivityObserver* activity_observer;
 - (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event { (void)event; [self updateTouches:touches]; }
 - (void)touchesEnded:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
     (void)event; IOSTouch_RecordActivity();
-    for (UITouch* touch in touches) { [_points removeObjectForKey:touch]; [_stickContacts removeObject:touch]; }
+    // A normal tap-release lets its bounded shortcut finish. UIKit cancellation
+    // and app/options transitions use resetTouches instead.
+    for (UITouch* touch in touches) {
+        [_points removeObjectForKey:touch]; [_stickContacts removeObject:touch]; [_motionContacts removeObject:touch];
+    }
     [self rebuildState];
 }
-- (void)touchesCancelled:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event { [self touchesEnded:touches withEvent:event]; }
+- (void)touchesCancelled:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
+    (void)touches; (void)event; IOSTouch_RecordActivity(); [self resetTouches];
+}
 - (void)resetTouches {
-    [_points removeAllObjects]; [_stickContacts removeAllObjects];
+    [_points removeAllObjects]; [_stickContacts removeAllObjects]; [_motionContacts removeAllObjects];
+    IOSMotion_Cancel(&_motionState); _motionOutput = 0; _motionItem = nil;
     _stickX = _stickY = 0; SDL_zero(_buttons); _activeMask = 0; [self setNeedsDisplay];
 }
 - (Input_ButtonState)buttonState { return _buttons; }
+- (void)advanceFrame {
+    if (self.editing || IOSOptions_IsOpen() || editor_open || !IOSOptions_Get()->touch_enabled) { [self resetTouches]; return; }
+    _motionOutput = IOSMotion_Tick(&_motionState);
+    if (!_motionState.active && !_motionOutput) _motionItem = nil;
+    [self rebuildState];
+}
 - (void)tapControl:(UITapGestureRecognizer*)gesture {
     self.selected = [self indexAtPoint:[gesture locationInView:self]];
     [self setNeedsDisplay];
@@ -391,7 +444,8 @@ static ThreeSXActivityObserver* activity_observer;
         ThreeSXTouchItem* item = layout_items[i]; CGRect frame = [self frameAtIndex:i];
         BOOL selected = self.editing && self.selected == i;
         if (!item.control.dpad) {
-            BOOL pressed = item.control.binding && (_activeMask & item.control.binding) == item.control.binding;
+            BOOL pressed = (item == _motionItem && (_motionState.active || _motionOutput)) ||
+                (item.motion == IOS_MOTION_NONE && item.control.binding && (_activeMask & item.control.binding) == item.control.binding);
             [self drawControl:frame label:item.label pressed:pressed rounded:item.control.menu selected:selected];
         } else [self drawDirectionControl:frame selected:selected];
     }
@@ -405,6 +459,8 @@ static void layoutChanged(void) { [touch_view refreshLayout]; }
 @property(nonatomic, strong) ThreeSXTouchItem* item;
 @property(nonatomic, assign) BOOL custom;
 @property(nonatomic, weak) ThreeSXLayoutController* editor;
+@property(nonatomic, strong) UISlider* sizeSlider;
+@property(nonatomic, strong) UITextField* sizeNumber;
 @end
 @interface ThreeSXControlList : UITableViewController
 @property(nonatomic, weak) ThreeSXLayoutController* editor;
@@ -415,6 +471,37 @@ static void layoutChanged(void) { [touch_view refreshLayout]; }
 - (void)refresh;
 @end
 
+@interface ThreeSXMotionPicker : UITableViewController
+@property(nonatomic, strong) ThreeSXTouchItem* item;
+@property(nonatomic, weak) ThreeSXLayoutController* editor;
+@end
+@implementation ThreeSXMotionPicker
+- (void)viewDidLoad { [super viewDidLoad]; self.title = @"Motion shortcut"; self.tableView.rowHeight = 58; }
+- (NSInteger)tableView:(UITableView*)tableView numberOfRowsInSection:(NSInteger)section {
+    (void)tableView; (void)section; return IOS_MOTION_COUNT;
+}
+- (UITableViewCell*)tableView:(UITableView*)tableView cellForRowAtIndexPath:(NSIndexPath*)path {
+    (void)tableView;
+    UITableViewCell* cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+    cell.textLabel.text = [NSString stringWithUTF8String:IOSMotion_Name((IOSMotion_ID)path.row)]; cell.textLabel.numberOfLines = 2;
+    cell.accessoryType = self.item.motion == path.row ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+    return cell;
+}
+- (void)tableView:(UITableView*)tableView didSelectRowAtIndexPath:(NSIndexPath*)path {
+    [tableView deselectRowAtIndexPath:path animated:YES];
+    self.item.motion = (IOSMotion_ID)path.row;
+    if (self.item.motion != IOS_MOTION_NONE) {
+        IOSLayout_Control control = self.item.control;
+        control.binding &= ~(IOS_TOUCH_UP | IOS_TOUCH_DOWN | IOS_TOUCH_LEFT | IOS_TOUCH_RIGHT);
+        self.item.control = control;
+    } else if (!self.item.control.binding) {
+        IOSLayout_Control control = self.item.control; control.binding = IOS_TOUCH_LP; self.item.control = control;
+    }
+    saveLayout(); [self.editor refresh];
+    [self.navigationController popViewControllerAnimated:YES];
+}
+@end
+
 @implementation ThreeSXControlDetails
 - (void)viewDidLoad {
     [super viewDidLoad]; self.title = self.item.label;
@@ -422,17 +509,21 @@ static void layoutChanged(void) { [touch_view refreshLayout]; }
         target:self action:@selector(done)];
 }
 - (void)done { [self.view endEditing:YES]; [self dismissViewControllerAnimated:YES completion:nil]; }
-- (NSInteger)numberOfSectionsInTableView:(UITableView*)tableView { (void)tableView; return self.custom ? 3 : 1; }
+- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self.tableView reloadData]; }
+- (NSInteger)numberOfSectionsInTableView:(UITableView*)tableView { (void)tableView; return self.custom ? 4 : 1; }
 - (NSInteger)tableView:(UITableView*)tableView numberOfRowsInSection:(NSInteger)section {
-    (void)tableView; return section == 0 ? (self.custom ? 4 : 3) : section == 1 ? 12 : 1;
+    (void)tableView; return section == 0 ? (self.custom ? 4 : 3) : section == 1 ? 12 : section == 2 ? 2 : 1;
 }
 - (NSString*)tableView:(UITableView*)tableView titleForHeaderInSection:(NSInteger)section {
-    (void)tableView; return section == 0 ? @"Control" : section == 1 ? @"Button binding" : nil;
+    (void)tableView; return section == 0 ? @"Control" : section == 1 ? @"Button binding / motion finish" : section == 2 ? @"Motion shortcut" : nil;
 }
 - (NSString*)tableView:(UITableView*)tableView titleForFooterInSection:(NSInteger)section {
     (void)tableView;
     if (section == 0) return @"Drag in the layout editor, or use the position sliders to move a control hidden behind another. Changes save automatically.";
-    if (section == 1) return @"Choose one button or a simultaneous combination. LP + MP + HP makes PPP; LK + MK + HK makes KKK. Attack labels use the game's default assignments.";
+    if (section == 1) return self.item.motion == IOS_MOTION_NONE
+        ? @"Choose one button or a simultaneous combination. LP + MP + HP makes PPP; LK + MK + HK makes KKK. Attack labels use the game's default assignments."
+        : @"Choose optional finishing attacks, START or SELECT, or uncheck all buttons for a motion-only shortcut. Directions come from the motion. LP + MP + HP makes PPP; LK + MK + HK makes KKK. Attack labels use the game's default assignments.";
+    if (section == 2) return @"Tap once to play the motion, then the selected finishing buttons. Holding never repeats it. A new shortcut replaces the previous one. Motion directions temporarily override the touch D-pad; opening Options or cancelling touches stops playback. Mirror swaps left and right, not the finishing buttons.";
     return nil;
 }
 - (void)labelChanged:(UITextField*)field {
@@ -440,11 +531,29 @@ static void layoutChanged(void) { [touch_view refreshLayout]; }
 }
 - (void)controlChanged:(UISlider*)slider {
     IOSLayout_Control control = self.item.control;
-    if (slider.tag == 0) control.size = slider.value;
+    if (slider.tag == 0) {
+        control.size = roundf(slider.value * 100) / 100;
+        slider.value = control.size;
+        self.sizeNumber.text = [NSString stringWithFormat:@"%.0f", control.size * 100];
+        slider.accessibilityValue = [NSString stringWithFormat:@"%.0f percent", control.size * 100];
+    }
     else if (slider.tag == 1) control.center_x = slider.value;
     else control.center_y = slider.value;
     self.item.control = control; saveLayout(); [self.editor refresh];
 }
+- (void)sizeNumberCommitted:(UITextField*)field {
+    NSNumberFormatter* formatter = [[NSNumberFormatter alloc] init]; formatter.numberStyle = NSNumberFormatterDecimalStyle;
+    NSString* text = [field.text stringByReplacingOccurrencesOfString:@"%" withString:@""];
+    NSNumber* parsed = [formatter numberFromString:[text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]];
+    IOSLayout_Control c = self.item.control;
+    if (parsed && isfinite(parsed.floatValue)) c.size = fminf(200, fmaxf(55, roundf(parsed.floatValue))) / 100;
+    self.item.control = c; self.sizeSlider.value = c.size;
+    field.text = [NSString stringWithFormat:@"%.0f", c.size * 100];
+    self.sizeSlider.accessibilityValue = [NSString stringWithFormat:@"%.0f percent", c.size * 100];
+    saveLayout(); [self.editor refresh];
+}
+- (void)sizeNumberDone { [self.sizeNumber resignFirstResponder]; }
+- (void)mirrorChanged:(UISwitch*)toggle { self.item.mirrorMotion = toggle.on; saveLayout(); [self.editor refresh]; }
 - (UITableViewCell*)tableView:(UITableView*)tableView cellForRowAtIndexPath:(NSIndexPath*)path {
     (void)tableView;
     UITableViewCell* cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:nil];
@@ -466,25 +575,53 @@ static void layoutChanged(void) { [touch_view refreshLayout]; }
         slider.value = property == 0 ? c.size : property == 1 ? c.center_x : c.center_y;
         slider.accessibilityLabel = names[property];
         [slider addTarget:self action:@selector(controlChanged:) forControlEvents:UIControlEventValueChanged];
-        cell.accessoryView = slider;
+        if (property == 0) {
+            UIView* controls = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 230, 44)];
+            slider.frame = CGRectMake(0, 0, 140, 44); [controls addSubview:slider]; self.sizeSlider = slider;
+            UITextField* number = [[UITextField alloc] initWithFrame:CGRectMake(148, 6, 60, 32)];
+            number.borderStyle = UITextBorderStyleRoundedRect; number.keyboardType = UIKeyboardTypeNumberPad;
+            number.textAlignment = NSTextAlignmentCenter; number.text = [NSString stringWithFormat:@"%.0f", c.size * 100];
+            number.accessibilityLabel = @"Control size percent, 55 to 200";
+            [number addTarget:self action:@selector(sizeNumberCommitted:) forControlEvents:UIControlEventEditingDidEnd];
+            UIToolbar* keyboardToolbar = [[UIToolbar alloc] init]; [keyboardToolbar sizeToFit];
+            keyboardToolbar.items = @[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil],
+                [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(sizeNumberDone)]];
+            number.inputAccessoryView = keyboardToolbar; [controls addSubview:number]; self.sizeNumber = number;
+            UILabel* percent = [[UILabel alloc] initWithFrame:CGRectMake(212, 6, 18, 32)]; percent.text = @"%"; [controls addSubview:percent];
+            cell.accessoryView = controls;
+        } else cell.accessoryView = slider;
     } else if (path.section == 1) {
         cell.textLabel.text = bindingLabels()[path.row];
         cell.accessoryType = (self.item.control.binding & binding_choices[path.row]) ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+        if (self.item.motion != IOS_MOTION_NONE && path.row >= 8) {
+            cell.textLabel.enabled = NO; cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        }
+    } else if (path.section == 2 && path.row == 0) {
+        cell.textLabel.text = @"Motion"; cell.detailTextLabel.text = [NSString stringWithUTF8String:IOSMotion_Name(self.item.motion)];
+        cell.detailTextLabel.numberOfLines = 2; cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    } else if (path.section == 2) {
+        cell.textLabel.text = @"Mirror left / right";
+        UISwitch* toggle = [[UISwitch alloc] init]; toggle.on = self.item.mirrorMotion;
+        [toggle addTarget:self action:@selector(mirrorChanged:) forControlEvents:UIControlEventValueChanged]; cell.accessoryView = toggle;
     } else { cell.textLabel.text = @"Remove custom button"; cell.textLabel.textColor = UIColor.systemRedColor; }
     return cell;
 }
 - (void)tableView:(UITableView*)tableView didSelectRowAtIndexPath:(NSIndexPath*)path {
     [tableView deselectRowAtIndexPath:path animated:YES];
     if (path.section == 1) {
+        if (self.item.motion != IOS_MOTION_NONE && path.row >= 8) return;
         IOSLayout_Control c = self.item.control; uint16_t changed = c.binding ^ binding_choices[path.row];
-        if (!changed) {
+        if (!changed && self.item.motion == IOS_MOTION_NONE) {
             UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Choose at least one button"
                 message:@"A custom button needs a button binding or a combination." preferredStyle:UIAlertControllerStyleAlert];
             [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
             [self presentViewController:alert animated:YES completion:nil]; return;
         }
         c.binding = changed; self.item.control = c; saveLayout(); [self.editor refresh]; [tableView reloadData];
-    } else if (path.section == 2) {
+    } else if (path.section == 2 && path.row == 0) {
+        ThreeSXMotionPicker* picker = [[ThreeSXMotionPicker alloc] initWithStyle:UITableViewStyleInsetGrouped];
+        picker.item = self.item; picker.editor = self.editor; [self.navigationController pushViewController:picker animated:YES];
+    } else if (path.section == 3) {
         UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Remove this button?"
             message:self.item.label preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
@@ -665,6 +802,7 @@ void IOSTouch_Reset(void) {
     [touch_view resetTouches]; [activity_observer.contacts removeAllObjects];
 }
 void IOSTouch_RecordActivity(void) { last_touch_ms = SDL_GetTicks(); options_button.hidden = NO; }
+void IOSTouch_AdvanceFrame(void) { [touch_view advanceFrame]; }
 void IOSTouch_GetButtonState(Input_ButtonState* state) {
     if (!state) return; SDL_zerop(state);
     if (touch_view && IOSOptions_Get()->touch_enabled && !IOSOptions_IsOpen() && !editor_open) *state = [touch_view buttonState];

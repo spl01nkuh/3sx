@@ -6,7 +6,7 @@ The build can run on a hosted macOS GitHub Actions runner, so you do not need to
 
 ## Recommended phone setup
 
-[Download the 0.3.0 iPhone build ZIP](https://github.com/spl01nkuh/3sx/actions/runs/42440558011/artifacts/13601309257). Both iPhone and simulator builds passed, including the native menus, controller-to-game input regression, touch styles/layout geometry, display sizing, and Apple bundle recognition. All six filters also passed actual offscreen Metal rendering on Apple's paravirtual GPU. Hands-on device validation of the new features remains outstanding.
+Version **0.4.0 build 5** is being verified. Its download link will be added after the hosted builds pass. The previous [0.3.0 iPhone build ZIP](https://github.com/spl01nkuh/3sx/actions/runs/42440558011/artifacts/13601309257) remains available in the meantime.
 
 1. Download and extract the device build artifact. It contains `3SX-unsigned.ipa` and `INSTALL.txt`.
 2. Sign and install the IPA with iLoader or your usual sideloading app.
@@ -17,23 +17,39 @@ When updating, update the existing app with the same signing account; avoid dele
 
 ## iOS options
 
-Tap the small gear in the top-right safe area. It hides after five seconds without touch input; touch anywhere to reveal it again, including when touch controls are disabled. It stays visible while touching or using the menu. The game and audio pause while the menu or control editor is open. Changes apply when the menu closes and save automatically between launches.
+Tap the small gear in the top-right safe area. It hides after five seconds without touch input; touch anywhere to reveal it again, including when touch controls are disabled. It stays visible while touching or using the menu. The game and audio pause while the menu or control editor is open. Settings save automatically between launches. The Filter page previews changes immediately; gameplay resumes with those settings when the menu closes.
 
 - Toggle touch controls without disconnecting controllers.
 - Choose **Hybrid**, **Stick**, or **D-pad** for the touch direction control.
 - Open **Edit controls & custom buttons** to drag and resize controls, or add custom simultaneous button combinations.
-- Choose Sharp Bilinear, CRT zfast, CRT Lottes, CRT Caligari, CRT EasyMode, or Composite TV, with adjustable strength; Off is the default.
+- Choose Sharp Bilinear, CRT zfast, CRT Lottes, CRT Caligari, CRT EasyMode, Composite TV, CRT Aperture, CRT Geom, or CRT Hyllian, with adjustable strength; Off is the default. The Filter menu keeps a preview of the paused game visible above the list, with a strength slider and **Original** comparison.
 - Set 4:3, original pixel aspect, or Fill. **Screen size** scales both axes from 25–100%; separate **Screen width** and **Screen height** sliders stretch each axis from 25–200%. Values above 100% zoom and can crop the picture. Set all three to 100% to restore the fitted aspect ratio.
-- Adjust controller stick sensitivity (1–100%, default 50%) and radial dead zone (0–35%). Higher sensitivity activates a direction with less stick travel. It works even with the game's legacy analog-stick option disabled. The physical D-pad is unaffected.
+- Adjust stick sensitivity (1–100%, default 50%) and radial dead zone (0–35%). This now applies to on-screen **Stick** and **Hybrid** controls as well as controllers. Higher sensitivity activates a direction with less stick travel; full-throw movement speed stays the same because the game uses digital directions. It works with the game's legacy analog-stick option enabled or disabled. D-pads are unaffected.
+- Open **Sticks → Test stick sensitivity** to compare actual controller raw axes with activated directions, try the on-screen control, and adjust sensitivity without leaving the test. A controller exposing only D-pad buttons has no analog travel to adjust; the tester identifies its axes and mapping.
 - Reset just iOS options without deleting game data.
 
-All 28 Carlos presets and eight GLSL sources remain in `third_party_sources/carlos-crt/`, with attribution. Pinned original Lottes, zfast and Caligari sources and licenses are in `third_party_sources/libretro-crt/`. The menu provides six distinct single-pass Metal adaptations plus Off: crisp scaling, flat scanlines, curved Gaussian-beam CRT, phosphor dots, slot mask, and YIQ color bleed/noise. Multi-pass and feedback presets requiring additional libretro dependencies remain retained as source for future integration. A shader initialization failure is shown in the filter menu instead of silently pretending filters work.
+All 28 Carlos presets and eight GLSL sources remain in `third_party_sources/carlos-crt/`, with attribution. Pinned original Lottes, zfast, Caligari, Aperture, Geom and Hyllian sources and licenses are in `third_party_sources/libretro-crt/`. The menu provides nine single-pass Metal adaptations plus Off: crisp scaling, flat scanlines, curved Gaussian beams, phosphor dots, slot mask, YIQ color bleed/noise, Aperture glow, Geom glass curvature/corners, and sharp Hyllian reconstruction. Multi-pass and feedback presets requiring additional libretro dependencies remain retained as source for future integration. A shader initialization failure is shown in the filter menu instead of silently pretending filters work.
+
+The in-menu preview copies the last rendered game canvas and uses the same production fragment shader as gameplay. It does not advance the game or play shortcut sequences. The picture remains frozen while animated filter noise and settings can change. Preview appearance and performance at its smaller resolution can differ from full-screen output.
 
 ## Touch layout and custom buttons
 
 In **iOS Options → Edit controls & custom buttons**, drag any control to move it. Tap a control to adjust its size and position precisely. **Controls** lists every control, including ones covered by another control. The direction **Style** menu offers the same Hybrid / Stick / D-pad choices as settings. A normal stick uses a circular dead zone and a movable thumb; the hybrid preserves the original sliding control. All three produce the game's eight digital movement directions.
 
-Use **Add** to create up to 16 custom buttons. Give each a name and select one or more bindings from the six attacks, Start, Select, and four directions. For example, select LP + MP + HP for a PPP button. These are simultaneous holds; timed macros are not supported. Buttons follow the game's current mapping. Controls can be resized, custom buttons can be deleted, and **Reset** restores the layout after confirmation. Layout and custom buttons save separately from the other iOS options.
+Use **Add** to create up to 16 custom buttons. Give each a name and select one or more bindings from the six attacks, Start, Select, and four directions. For example, select LP + MP + HP for a PPP button. Without a motion shortcut these are simultaneous holds. Buttons follow the game's current mapping. **Size** includes a slider and an exact percentage input (55–200%), so several buttons can share a size. Tap the keyboard's **Done** to commit the number. Custom buttons can be deleted, and **Reset** restores the layout after confirmation. Layout and custom buttons save separately from the other iOS options.
+
+Custom buttons also have a **Motion shortcut** picker with eight sequences:
+
+- Quarter circle forward: ↓ ↘ →
+- Quarter circle back: ↓ ↙ ←
+- Left to down: ← ↙ ↓
+- Dragon punch forward: → ↓ ↘
+- Dragon punch back: ← ↓ ↙
+- Full circle: 360°
+- Half circle forward: ← ↙ ↓ ↘ →
+- Half circle back: → ↘ ↓ ↙ ←
+
+Directions are screen-relative; **Mirror left / right** reverses the entire motion. The selected attack buttons finish the motion, or unselect them for a direction-only shortcut. Tap once to play; lifting your finger lets the sequence complete, and holding does not repeat. A new shortcut replaces the current one. Playback uses game frames rather than a wall-clock timer, so extra input polling does not speed it up. Motion directions temporarily override manual touch directions, while other attack buttons can still be pressed. Opening iOS Options, hiding controls, or a system touch cancellation clears playback. A 360 finishes its attack when all four cardinal directions have been entered and holds it through the remaining rotation to limit jump delay. Move recognition still depends on the selected character, game state and button mapping; test shortcuts in training mode.
 
 ## Optional private app icon
 

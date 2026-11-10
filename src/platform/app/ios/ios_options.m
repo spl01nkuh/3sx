@@ -3,6 +3,8 @@
 #include <math.h>
 #include "platform/app/ios/ios_options.h"
 #include "platform/input/ios/ios_touch.h"
+#import "platform/app/ios/ios_filter_preview.h"
+#import "platform/app/ios/ios_stick_preview.h"
 
 static NSString* const preferenceKey = @"3sx-ios-options-v1";
 static bool optionsOpen;
@@ -37,7 +39,7 @@ void IOSOptions_Load(void) {
     IOSOptions_Apply(options);
 }
 
-static void saveOptions(void) {
+void IOSOptions_Save(void) {
     const IOSOptions* o = IOSOptions_Get();
     [NSUserDefaults.standardUserDefaults setObject:@{
         @"schema": @2,
@@ -49,12 +51,67 @@ static void saveOptions(void) {
     IOSTouch_RefreshOptions();
 }
 
-@interface ThreeSXFilterController : UITableViewController
+@interface ThreeSXFilterController : UIViewController <UITableViewDataSource, UITableViewDelegate>
+@property(nonatomic, strong) ThreeSXFilterPreview* preview;
+@property(nonatomic, strong) UITableView* table;
+@property(nonatomic, strong) UILabel* strengthLabel;
 @end
 @implementation ThreeSXFilterController
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"Display Filter";
+    self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
+    self.preview = [[ThreeSXFilterPreview alloc] initWithFrame:CGRectZero];
+    UILabel* caption = [[UILabel alloc] init];
+    caption.font = [UIFont preferredFontForTextStyle:UIFontTextStyleCaption1];
+    caption.numberOfLines = 2;
+    caption.text = self.preview.previewError ?: @"Paused game preview — choose a filter below, or compare with Original.";
+    UISegmentedControl* compare = [[UISegmentedControl alloc] initWithItems:@[@"Selected filter", @"Original"]];
+    compare.selectedSegmentIndex = 0;
+    compare.accessibilityLabel = @"Preview comparison";
+    [compare addTarget:self action:@selector(compareChanged:) forControlEvents:UIControlEventValueChanged];
+    self.strengthLabel = [[UILabel alloc] init];
+    self.strengthLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleCaption1];
+    self.strengthLabel.text = [NSString stringWithFormat:@"Strength: %d%%", IOSOptions_Get()->filter_strength];
+    UISlider* strength = [[UISlider alloc] init];
+    strength.minimumValue = 0; strength.maximumValue = 100; strength.value = IOSOptions_Get()->filter_strength;
+    strength.accessibilityLabel = @"Preview filter strength";
+    [strength addTarget:self action:@selector(strengthChanged:) forControlEvents:UIControlEventValueChanged];
+    UIStackView* strengthRow = [[UIStackView alloc] initWithArrangedSubviews:@[self.strengthLabel, strength]];
+    strengthRow.axis = UILayoutConstraintAxisHorizontal; strengthRow.spacing = 12;
+    [self.strengthLabel.widthAnchor constraintEqualToConstant:110].active = YES;
+    self.table = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStyleInsetGrouped];
+    self.table.dataSource = self; self.table.delegate = self;
+    UIStackView* stack = [[UIStackView alloc] initWithArrangedSubviews:@[caption, self.preview, compare, strengthRow, self.table]];
+    stack.axis = UILayoutConstraintAxisVertical; stack.spacing = 6;
+    stack.translatesAutoresizingMaskIntoConstraints = NO; [self.view addSubview:stack];
+    NSLayoutConstraint* previewHeight = [self.preview.heightAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.heightAnchor multiplier:0.40];
+    previewHeight.priority = UILayoutPriorityDefaultHigh;
+    [NSLayoutConstraint activateConstraints:@[
+        [stack.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:6],
+        [stack.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-6],
+        [stack.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor constant:12],
+        [stack.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor constant:-12],
+        previewHeight, [self.preview.heightAnchor constraintLessThanOrEqualToConstant:220],
+        [self.preview.heightAnchor constraintGreaterThanOrEqualToConstant:80],
+        [strengthRow.heightAnchor constraintEqualToConstant:36]
+    ]];
+}
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated]; self.preview.paused = self.preview.previewError != nil;
+}
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated]; self.preview.paused = YES;
+}
+- (void)compareChanged:(UISegmentedControl*)control {
+    self.preview.showOriginal = control.selectedSegmentIndex == 1; [self.preview refresh];
+}
+- (void)strengthChanged:(UISlider*)control {
+    IOSOptions options = *IOSOptions_Get(); options.filter_strength = (int)lroundf(control.value);
+    control.value = options.filter_strength;
+    control.accessibilityValue = [NSString stringWithFormat:@"%d percent", options.filter_strength];
+    self.strengthLabel.text = [NSString stringWithFormat:@"Strength: %d%%", options.filter_strength];
+    IOSOptions_Apply(options); IOSOptions_Save(); [self.preview refresh];
 }
 - (NSInteger)tableView:(UITableView*)tableView numberOfRowsInSection:(NSInteger)section {
     (void)tableView; (void)section;
@@ -75,14 +132,14 @@ static void saveOptions(void) {
     (void)tableView; (void)section;
     const char* error = IOSOptions_FilterError();
     return error ? [NSString stringWithFormat:@"Filters could not initialize: %s", error]
-                 : @"Distinct CRT shader families. Close iOS Options to see the selected effect.";
+                 : @"The preview stays visible while you choose filters. Gameplay remains paused.";
 }
 - (void)tableView:(UITableView*)tableView didSelectRowAtIndexPath:(NSIndexPath*)path {
     if (path.row != IOS_FILTER_NONE && IOSOptions_FilterError() != NULL) return;
     IOSOptions options = *IOSOptions_Get();
     options.filter = (int)path.row;
     IOSOptions_Apply(options);
-    saveOptions();
+    IOSOptions_Save(); [self.preview refresh];
     [tableView reloadData];
 }
 @end
@@ -119,28 +176,28 @@ static void saveOptions(void) {
 - (NSInteger)numberOfSectionsInTableView:(UITableView*)tableView { (void)tableView; return 4; }
 - (NSInteger)tableView:(UITableView*)tableView numberOfRowsInSection:(NSInteger)section {
     (void)tableView;
-    return section == 0 ? 3 : section == 1 ? 6 : section == 2 ? 2 : 1;
+    return section == 0 ? 3 : section == 1 ? 6 : section == 2 ? 3 : 1;
 }
 - (NSString*)tableView:(UITableView*)tableView titleForHeaderInSection:(NSInteger)section {
     (void)tableView;
-    return @[@"Touch Controls", @"Display", @"Controller", @"Defaults"][section];
+    return @[@"Touch Controls", @"Display", @"Sticks", @"Defaults"][section];
 }
 - (NSString*)tableView:(UITableView*)tableView titleForFooterInSection:(NSInteger)section {
     (void)tableView;
     if (section == 0) return @"Choose a direction control, move and resize controls, or create custom button combinations. The gear fades after five seconds without touch; touch the screen to show it again.";
-    if (section == 1) return @"Changes apply when you close this menu. Screen size scales both axes together. Width and height stretch each axis separately, relative to the chosen aspect ratio. Values above 100% zoom in and may crop the picture; 100% on all three restores the fitted size.";
-    if (section == 2) return @"Higher sensitivity activates directions with less stick movement, up to 100%. The game's legacy analog toggle does not affect this setting. The D-pad is unchanged.";
+    if (section == 1) return @"The Filter menu includes a live preview of the paused game. Screen size scales both axes together. Width and height stretch each axis separately, relative to the chosen aspect ratio. Values above 100% zoom in and may crop the picture; 100% on all three restores the fitted size.";
+    if (section == 2) return @"Sensitivity changes how far a controller or on-screen Stick/Hybrid must move before a direction activates. Movement speed at full throw stays the same. D-pads are unchanged. Test sticks below shows input live.";
     return @"Settings save automatically on this device. Game data is kept separately.";
 }
 - (void)toggleTouch:(UISwitch*)control {
     IOSOptions options = *IOSOptions_Get();
     options.touch_enabled = control.on;
-    IOSOptions_Apply(options); saveOptions();
+    IOSOptions_Apply(options); IOSOptions_Save();
 }
 - (void)changeAspect:(UISegmentedControl*)control {
     IOSOptions options = *IOSOptions_Get();
     options.aspect = (int)control.selectedSegmentIndex;
-    IOSOptions_Apply(options); saveOptions();
+    IOSOptions_Apply(options); IOSOptions_Save();
 }
 - (void)changeDirectionStyle:(UISegmentedControl*)control {
     IOSTouch_SetDirectionStyle((IOSLayout_DirectionStyle)control.selectedSegmentIndex);
@@ -162,7 +219,7 @@ static void saveOptions(void) {
     UILabel* label = (UILabel*)stack.arrangedSubviews.firstObject;
     label.text = [NSString stringWithFormat:@"%@: %d%%", title, value];
     control.accessibilityValue = [NSString stringWithFormat:@"%d percent", value];
-    IOSOptions_Apply(options); saveOptions();
+    IOSOptions_Apply(options); IOSOptions_Save();
 }
 - (UITableViewCell*)sliderCell:(NSString*)title value:(int)value min:(int)minimum max:(int)maximum tag:(NSInteger)tag {
     UITableViewCell* cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
@@ -224,7 +281,12 @@ static void saveOptions(void) {
         [aspect addTarget:self action:@selector(changeAspect:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = aspect; cell.selectionStyle = UITableViewCellSelectionStyleNone;
     } else {
-        cell.textLabel.text = @"Reset iOS options"; cell.textLabel.textColor = UIColor.systemRedColor;
+        if (path.section == 2) {
+            cell.textLabel.text = @"Test stick sensitivity";
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        } else {
+            cell.textLabel.text = @"Reset iOS options"; cell.textLabel.textColor = UIColor.systemRedColor;
+        }
     }
     return cell;
 }
@@ -233,14 +295,16 @@ static void saveOptions(void) {
     if (path.section == 0 && path.row == 2) {
         IOSTouch_EditLayout();
     } else if (path.section == 1 && path.row == 0) {
-        [self.navigationController pushViewController:[[ThreeSXFilterController alloc] initWithStyle:UITableViewStyleInsetGrouped] animated:YES];
+        [self.navigationController pushViewController:[[ThreeSXFilterController alloc] init] animated:YES];
+    } else if (path.section == 2 && path.row == 2) {
+        [self.navigationController pushViewController:[[ThreeSXStickPreviewController alloc] init] animated:YES];
     } else if (path.section == 3) {
         UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Reset iOS options?"
             message:@"Restore touch, display and controller defaults." preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
         [alert addAction:[UIAlertAction actionWithTitle:@"Reset" style:UIAlertActionStyleDestructive handler:^(UIAlertAction* action) {
             (void)action; IOSOptions_Apply(IOSOptions_Defaults());
-            IOSTouch_SetDirectionStyle(IOS_LAYOUT_HYBRID); saveOptions(); [self.tableView reloadData];
+            IOSTouch_SetDirectionStyle(IOS_LAYOUT_HYBRID); IOSOptions_Save(); [self.tableView reloadData];
         }]];
         [self presentViewController:alert animated:YES completion:nil];
     }
